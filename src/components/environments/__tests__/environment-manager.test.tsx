@@ -312,5 +312,20 @@ it("does not label unrelated environment work as a connection check", () => {
   render(<EnvironmentManager localPaths={null} />);
   fireEvent.click(screen.getByRole("button", { name: "Add environment" }));
   expect(screen.queryByText("Checking connection…")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Waiting for environment operation…" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Test connection and add" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Test SSH" })).toBeEnabled();
+});
+
+it("tests SSH directly while environment work is busy", async () => {
+  useEnvironmentStore.setState({ busy: true });
+  vi.mocked(transport).mockResolvedValue(null);
+  render(<EnvironmentManager />);
+  fireEvent.click(screen.getByRole("button", { name: "Add environment" }));
+  fireEvent.change(screen.getByLabelText("Host"), { target: { value: "mac.test" } });
+  fireEvent.change(screen.getByLabelText("SSH user"), { target: { value: "test-user" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: testPassword } });
+  fireEvent.click(screen.getByRole("button", { name: "Test SSH" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("SSH login and Python check passed");
+  expect(transport).toHaveBeenCalledWith("test_ssh_connection", { req: expect.objectContaining({ action: "connect_password", host: "mac.test" }) });
+  expect(command).not.toHaveBeenCalled();
 });

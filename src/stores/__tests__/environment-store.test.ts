@@ -54,3 +54,15 @@ it("keeps polling non-blocking and drops overlapping overview requests", async (
   await first;
   expect(useEnvironmentStore.getState().busy).toBe(false);
 });
+
+it("starts connections without waiting for the environment queue", async () => {
+  let release!: (value: unknown) => void;
+  vi.mocked(transport).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }))
+    .mockResolvedValueOnce({ registry: { generation: 6 } });
+  const scan = useEnvironmentStore.getState().command({ action: "refresh" });
+  await vi.waitFor(() => expect(transport).toHaveBeenCalledTimes(1));
+  await useEnvironmentStore.getState().command({ action: "connect_password" });
+  expect(transport).toHaveBeenCalledTimes(2);
+  release({ registry: { generation: 7 } });
+  await scan;
+});

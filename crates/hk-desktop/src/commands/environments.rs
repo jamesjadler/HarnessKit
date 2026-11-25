@@ -107,3 +107,9 @@ pub fn managed_file_command(
     let store = hk_core::store::Store::open(&home.join(".harnesskit/metadata.db"))?;
     hk_core::environments::managed_files::execute(&home, &state.adapters, &store, req)
 }
+
+#[tauri::command]
+pub async fn test_ssh_connection(req: hk_core::environments::service::Request) -> Result<(), HkError> {
+    tauri::async_runtime::spawn_blocking(move || hk_core::environments::ssh_credentials::test_connection(req))
+        .await.map_err(|e| HkError::Internal(e.to_string()))?
+}

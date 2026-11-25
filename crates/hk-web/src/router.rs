@@ -92,6 +92,10 @@ pub fn build_router(state: WebState) -> Router {
                 .layer(axum::extract::DefaultBodyLimit::max(128 * 1024 * 1024)),
         )
         .route(
+            "/api/test_ssh_connection",
+            post(handlers::environments::test_ssh_connection),
+        )
+        .route(
             "/api/discover_environments",
             post(handlers::environments::discover_environments),
         )

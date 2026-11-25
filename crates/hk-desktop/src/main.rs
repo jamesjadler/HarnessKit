@@ -37,6 +37,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::discover_environments,
+            commands::test_ssh_connection,
             commands::environment_extension,
             commands::environment_command,
             commands::managed_file_command,

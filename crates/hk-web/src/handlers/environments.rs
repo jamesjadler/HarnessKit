@@ -76,6 +76,12 @@ pub async fn save_comparison_file(
     .await
 }
 
+pub async fn test_ssh_connection(
+    Json(body): Json<super::ReqBody<hk_core::environments::service::Request>>,
+) -> Result<Json<()>, ApiError> {
+    blocking(move || hk_core::environments::ssh_credentials::test_connection(body.req)).await
+}
+
 pub async fn environment_command(
     State(state): State<WebState>,
     Json(body): Json<super::ReqBody<hk_core::environments::service::Request>>,

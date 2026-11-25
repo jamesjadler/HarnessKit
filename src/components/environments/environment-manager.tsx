@@ -104,6 +104,8 @@ export function EnvironmentManager({
   const [authentication, setAuthentication] = useState("password");
   const [password, setPassword] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testSuccess, setTestSuccess] = useState(false);
   const [hostKey, setHostKey] = useState("");
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
@@ -112,6 +114,7 @@ export function EnvironmentManager({
     authentication === "password";
   useEffect(() => {
     setHostKey("");
+    setTestSuccess(false);
     setConnectionError(null);
   }, [host, port, user, kind, authentication]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -706,11 +709,33 @@ export function EnvironmentManager({
               error={connectionError}
             />
           )}
+          {["ssh", "tailscale", "ssh-vm"].includes(kind) && (
+            <button type="button" disabled={testing || connecting} className={button}
+              onClick={async () => {
+                setTesting(true);
+                setTestSuccess(false);
+                setConnectionError(null);
+                try {
+                  if (passwordSsh && !window.isSecureContext && !["localhost", "127.0.0.1", "::1", "[::1]"].includes(window.location.hostname))
+                    throw new Error("Open HarnessKit over HTTPS or localhost before entering a password.");
+                  await transport("test_ssh_connection", { req: passwordSsh
+                    ? { action: "connect_password", machine: "", name: "", host: host.trim(), user: user.trim(), port: Number(port) || 22, password, host_key: hostKey }
+                    : { action: "connect", machine: "", name: "", connection: { type: "ssh", host: host.trim(), user: user.trim(), port: Number(port) } }
+                  });
+                  setTestSuccess(true);
+                } catch (e) {
+                  setConnectionError(parseError(e instanceof Error ? e.message : e).message);
+                } finally { setTesting(false); }
+              }}>
+              {testing ? "Testing SSH…" : "Test SSH"}
+            </button>
+          )}
+          {testSuccess && <p role="status" className="text-sm text-success">SSH login and Python check passed. Ready to add.</p>}
           <button
-            disabled={busy}
+            disabled={connecting || testing}
             className="rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50"
           >
-            {connecting ? "Checking connection…" : busy ? "Waiting for environment operation…" : "Test connection and add"}
+            {connecting ? "Connecting and saving…" : "Test connection and add"}
           </button>
         </form>
       )}

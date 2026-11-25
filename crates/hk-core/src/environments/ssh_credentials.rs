@@ -211,6 +211,24 @@ fn request(session: &ssh2::Session, input: Value) -> Result<Value, HkError> {
     }
     Ok(response["result"].clone())
 }
+/// Tests only the supplied connection; no registry, database, or credential storage.
+pub fn test_connection(req: super::service::Request) -> Result<(), HkError> {
+    match req {
+        super::service::Request::ConnectPassword { host, user, port, password, host_key, .. } => {
+            let (session, actual) = handshake(&host, port)?;
+            verify_key(&actual, &host_key)?;
+            authenticate(&session, &user, &password)?;
+            request(&session, serde_json::json!({"action":"probe"}))?;
+            Ok(())
+        }
+        super::service::Request::Connect { connection: connection @ Connection::Ssh { .. }, .. } => {
+            super::transport::run(&connection, serde_json::json!({"action":"probe"}))?;
+            Ok(())
+        }
+        _ => Err(error("SSH connection details are required")),
+    }
+}
+
 pub fn connect(
     host: String,
     user: String,

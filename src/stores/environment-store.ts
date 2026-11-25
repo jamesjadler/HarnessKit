@@ -25,7 +25,8 @@ export const useEnvironmentStore = create<State>((set) => {
       if (background && pending > 0) return Promise.resolve();
       pending += 1;
       if (!background) set({ busy: true });
-      const job = queue.then(async () => {
+      const independent = req.action === "connect_password" || req.action === "connect";
+      const job = (independent ? Promise.resolve() : queue).then(async () => {
         set({ error: null });
         try {
           const data = await transport<EnvironmentOverview>(
@@ -43,7 +44,7 @@ export const useEnvironmentStore = create<State>((set) => {
           if (pending === 0) set({ busy: false });
         }
       });
-      queue = job.catch(() => {});
+      if (!independent) queue = job.catch(() => {});
       return job;
     },
   };

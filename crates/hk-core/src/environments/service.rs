@@ -237,6 +237,109 @@ pub fn execute(
     req: Request,
 ) -> Result<Overview, HkError> {
     let coordinator = Coordinator::new(home.join(".harnesskit/environments"));
+    if matches!(&req, Request::ConnectPassword { .. } | Request::Connect { .. }) {
+        match req {
+        Request::ConnectPassword {
+            machine,
+            name,
+            host,
+            user,
+            port,
+            password,
+            host_key,
+        } => {
+            if machine.trim().is_empty() || name.trim().is_empty() {
+                return Err(HkError::Validation(
+                    "Machine and environment names required".into(),
+                ));
+            }
+            let connection = super::ssh_credentials::connect(host, user, port, password, host_key)?;
+            let credential = match &connection {
+                Connection::SshPassword { credential, .. } => credential.clone(),
+                _ => unreachable!(),
+            };
+            let result = execute(
+                home,
+                adapters,
+                store,
+                Request::Connect {
+                    machine,
+                    name,
+                    connection,
+                },
+            );
+            if result.is_err() {
+                super::ssh_credentials::forget(&credential);
+            }
+            return result;
+        }
+        Request::Connect {
+            machine,
+            name,
+            connection,
+        } => {
+            if machine.trim().is_empty() || name.trim().is_empty() {
+                return Err(HkError::Validation(
+                    "Machine and environment names required".into(),
+                ));
+            }
+            let connection = super::transport::normalize_connection(connection)?;
+            let stopped = match &connection {
+                Connection::Wsl { distribution } => !super::transport::wsl_running(distribution)?,
+                _ => false,
+            };
+            let probe = if stopped {
+                serde_json::json!({"os":"linux","providers":[]})
+            } else {
+                super::transport::run(&connection, serde_json::json!({"action":"probe"}))?
+            };
+            let roots: Vec<(String, String)> = serde_json::from_value(probe["providers"].clone())?;
+            coordinator.transaction(|r| {
+                let serialized = serde_json::to_value(&connection)?;
+                if r.environments
+                    .iter()
+                    .any(|e| {
+                        matches!((&connection, &e.connection), (Connection::Docker { container: a, .. }, Connection::Docker { container: b, .. }) if a == b)
+                            || serde_json::to_value(&e.connection).is_ok_and(|v| v == serialized)
+                    })
+                {
+                    return Err(HkError::Conflict("Connection already registered".into()));
+                }
+                let id = uuid::Uuid::new_v4().to_string();
+                r.environments.push(Environment {
+                    connection,
+                    id: id.clone(),
+                    machine,
+                    name,
+                    os: probe["os"].as_str().unwrap_or("unknown").into(),
+                    paused: true,
+                    providers: roots
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, (name, root))| Provider {
+                            disabled: probe["disabled_providers"].as_array().is_some_and(|items| {
+                                items
+                                    .iter()
+                                    .any(|item| item.as_str() == Some(name.as_str()))
+                            }),
+                            last_error: None,
+                            last_scanned: None,
+                            scope: "global".into(),
+                            id: format!("{name}:{index}"),
+                            name,
+                            root,
+                            paused: false,
+                        })
+                        .collect(),
+                });
+                reconcile_probe_catalog(r, &id, &probe)?;
+                Ok(())
+            })?;
+        }
+            _ => unreachable!(),
+        }
+        return coordinator.overview();
+    }
     // UI polling reads the existing catalog. Discovery/reconciliation is handled
     // by initialization, explicit refreshes, mutations, and the background tick.
     if matches!(&req, Request::Overview) {
@@ -658,106 +761,7 @@ pub fn execute(
         Request::Rename { environment, name } => {
             rename_environment(&coordinator, &environment, &name)?;
         }
-        Request::ConnectPassword {
-            machine,
-            name,
-            host,
-            user,
-            port,
-            password,
-            host_key,
-        } => {
-            if machine.trim().is_empty() || name.trim().is_empty() {
-                return Err(HkError::Validation(
-                    "Machine and environment names required".into(),
-                ));
-            }
-            if coordinator.overview()?.registry.environments.iter().any(|e| matches!(&e.connection, Connection::SshPassword {host:h,user:u,port:p,..} if h==&host && u==&user && *p==port)) {
-                return Err(HkError::Conflict("Connection already registered".into()));
-            }
-            let connection = super::ssh_credentials::connect(host, user, port, password, host_key)?;
-            let credential = match &connection {
-                Connection::SshPassword { credential, .. } => credential.clone(),
-                _ => unreachable!(),
-            };
-            let result = execute(
-                home,
-                adapters,
-                store,
-                Request::Connect {
-                    machine,
-                    name,
-                    connection,
-                },
-            );
-            if result.is_err() {
-                super::ssh_credentials::forget(&credential);
-            }
-            return result;
-        }
-        Request::Connect {
-            machine,
-            name,
-            connection,
-        } => {
-            if machine.trim().is_empty() || name.trim().is_empty() {
-                return Err(HkError::Validation(
-                    "Machine and environment names required".into(),
-                ));
-            }
-            let connection = super::transport::normalize_connection(connection)?;
-            let stopped = match &connection {
-                Connection::Wsl { distribution } => !super::transport::wsl_running(distribution)?,
-                _ => false,
-            };
-            let probe = if stopped {
-                serde_json::json!({"os":"linux","providers":[]})
-            } else {
-                super::transport::run(&connection, serde_json::json!({"action":"probe"}))?
-            };
-            let roots: Vec<(String, String)> = serde_json::from_value(probe["providers"].clone())?;
-            coordinator.transaction(|r| {
-                let serialized = serde_json::to_value(&connection)?;
-                if r.environments
-                    .iter()
-                    .any(|e| {
-                        matches!((&connection, &e.connection), (Connection::Docker { container: a, .. }, Connection::Docker { container: b, .. }) if a == b)
-                            || serde_json::to_value(&e.connection).is_ok_and(|v| v == serialized)
-                    })
-                {
-                    return Err(HkError::Conflict("Connection already registered".into()));
-                }
-                let id = uuid::Uuid::new_v4().to_string();
-                r.environments.push(Environment {
-                    connection,
-                    id: id.clone(),
-                    machine,
-                    name,
-                    os: probe["os"].as_str().unwrap_or("unknown").into(),
-                    paused: true,
-                    providers: roots
-                        .into_iter()
-                        .enumerate()
-                        .map(|(index, (name, root))| Provider {
-                            disabled: probe["disabled_providers"].as_array().is_some_and(|items| {
-                                items
-                                    .iter()
-                                    .any(|item| item.as_str() == Some(name.as_str()))
-                            }),
-                            last_error: None,
-                            last_scanned: None,
-                            scope: "global".into(),
-                            id: format!("{name}:{index}"),
-                            name,
-                            root,
-                            paused: false,
-                        })
-                        .collect(),
-                });
-                reconcile_probe_catalog(r, &id, &probe)?;
-                Ok(())
-            })?;
-        }
+        Request::ConnectPassword { .. } | Request::Connect { .. } => unreachable!(),
         Request::Start { environment } => {
             let v = coordinator.overview()?;
             let env = v
@@ -1084,6 +1088,23 @@ fn rename_environment(
 #[cfg(test)]
 mod connection_edit_tests {
     use super::*;
+    #[test]
+    fn connection_validation_does_not_wait_for_registry() {
+        use fs2::FileExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join(".harnesskit/environments");
+        std::fs::create_dir_all(&root).unwrap();
+        let lock = std::fs::File::create(root.join("coordinator.lock")).unwrap();
+        lock.lock_exclusive().unwrap();
+        let store = Store::open(&tmp.path().join("metadata.db")).unwrap();
+        let result = execute(tmp.path(), &[], &store, Request::ConnectPassword {
+            machine: "test".into(), name: "test".into(), host: "invalid host".into(),
+            user: "test-user".into(), port: 22, password: String::new(), host_key: String::new(),
+        });
+        let error = result.err().expect("invalid address must fail");
+        assert!(error.to_string().contains("Enter a hostname"));
+    }
+
     #[test]
     fn overview_poll_does_not_repeat_discovery() {
         let tmp = tempfile::tempdir().unwrap();
