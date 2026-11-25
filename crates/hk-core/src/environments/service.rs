@@ -1090,7 +1090,7 @@ mod connection_edit_tests {
                 providers: vec![],
                 connection: Connection::Ssh {
                     host: "mac".into(),
-                    user: "demonlord".into(),
+                    user: "example-user".into(),
                     port: 22,
                 },
             });

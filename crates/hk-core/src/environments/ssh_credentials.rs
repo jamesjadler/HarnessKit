@@ -281,7 +281,7 @@ mod tests {
     fn registry_serialization_contains_reference_not_password() {
         let c = Connection::SshPassword {
             host: "mac".into(),
-            user: "demonlord".into(),
+            user: "example-user".into(),
             port: 22,
             credential: uuid::Uuid::new_v4().to_string(),
             host_key: "SHA256:key".into(),

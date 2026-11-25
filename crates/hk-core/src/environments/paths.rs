@@ -67,8 +67,8 @@ mod tests {
     #[test]
     fn drive_aliases_resolve_in_both_directions() {
         assert_eq!(
-            spelling(r"C:\Users\demon\Code", Runtime::Wsl),
-            "/mnt/c/Users/demon/Code"
+            spelling(r"C:\Users\example-user\Code", Runtime::Wsl),
+            "/mnt/c/Users/example-user/Code"
         );
         assert_eq!(
             spelling("/mnt/d/My Files/skills", Runtime::Windows),

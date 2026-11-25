@@ -9,7 +9,7 @@ Implemented:
 - Shared editable linked comparisons with named environments, paths, revisions and hunk transfers; directory matrix across multiple environments; Agents config/instruction comparisons.
 - Original application metadata and agent icons retained. Native tracked skill actions route through coordinator stale-content checks.
 
-Cleanup: retired skill solution source and installed ai-tooling-manager were archived at `/home/demonlord721/.local/share/harnesskit-retired/2026-11-24-skill-solution/`. Legacy session data and unrelated skills were retained.
+Cleanup: retired skill solution source and installed ai-tooling-manager were archived at `/home/example-user/.local/share/harnesskit-retired/2026-11-24-skill-solution/`. Legacy session data and unrelated skills were retained.
 
 Final review: one independent reviewer identified five important issues: imported member path validation, local custom-path/provider reconciliation, environment-filtered action scope, native action bypass of coordinator, and dirty comparison panes resetting on catalog updates. All five were fixed with regression tests.
 
@@ -17,7 +17,7 @@ Verification:
 - Frontend: 52 files, 390 tests passed (`/tmp/hk-final-frontend-after-review.log`).
 - Rust core/web: 878 tests passed; one live SSH test excluded from the normal suite (`/tmp/hk-final-rust-clean.log`). A clean system PATH was needed for existing missing-command tests under WSL.
 - Production TypeScript/Vite build passed (`/tmp/hk-final-build.log`). Vite reports a large-bundle advisory.
-- MacBook Air: actual Rust `ssh_round_trip_and_stale_write` test passed as `demonlord`, including binary folder round trip and stale-write rejection. Temporary fixture removed, authenticated multiplex session closed and password file deleted. No installed skills were changed.
+- MacBook Air: actual Rust `ssh_round_trip_and_stale_write` test passed as `example-user`, including binary folder round trip and stale-write rejection. Temporary fixture removed, authenticated multiplex session closed and password file deleted. No installed skills were changed.
 
 Operational limits:
 - SSH requires Python 3, a trusted host and usable key/authenticated session. The temporary Mac password session used for testing is not persistent application enrollment.

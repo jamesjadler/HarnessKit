@@ -500,8 +500,8 @@ mod tests {
         assert!(!args.contains(&"-p".to_string()));
         assert!(args.contains(&"BatchMode=yes".to_string()));
         assert!(args.contains(&"StrictHostKeyChecking=yes".to_string()));
-        let args = ssh_args("macbook", "demonlord", 2222).unwrap();
-        assert!(args.ends_with(&["-p".into(), "2222".into(), "demonlord@macbook".into()]));
+        let args = ssh_args("macbook", "example-user", 2222).unwrap();
+        assert!(args.ends_with(&["-p".into(), "2222".into(), "example-user@macbook".into()]));
         assert!(ssh_args("-oProxyCommand=evil", "", 0).is_err());
         assert!(ssh_args("macbook", "user; touch /tmp/evil", 22).is_err());
     }

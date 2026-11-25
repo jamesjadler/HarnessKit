@@ -6,6 +6,7 @@ import { EnvironmentManager } from "../environment-manager";
 
 vi.mock("@/lib/transport", () => ({ transport: vi.fn() }));
 const command = vi.fn();
+const testPassword = crypto.randomUUID();
 beforeEach(() => {
   vi.clearAllMocks();
   command.mockResolvedValue(undefined);
@@ -57,10 +58,10 @@ it("retains entered values and displays actionable guidance after failure", asyn
     target: { value: "my-mac" },
   });
   fireEvent.change(screen.getByLabelText("SSH user"), {
-    target: { value: "demonlord" },
+    target: { value: "example-user" },
   });
   fireEvent.change(screen.getByLabelText("Password"), {
-    target: { value: "sample-only" },
+    target: { value: testPassword },
   });
   fireEvent.click(
     screen.getByRole("button", { name: "Test connection and add" }),
@@ -226,10 +227,10 @@ it("defaults to credentials, confirms fingerprint, and clears password after con
     target: { value: "mac.ts.net" },
   });
   fireEvent.change(screen.getByLabelText("SSH user"), {
-    target: { value: "demonlord" },
+    target: { value: "example-user" },
   });
   fireEvent.change(screen.getByLabelText("Password"), {
-    target: { value: "sample-only" },
+    target: { value: testPassword },
   });
   fireEvent.click(
     screen.getByRole("button", { name: "Test connection and add" }),
@@ -245,8 +246,8 @@ it("defaults to credentials, confirms fingerprint, and clears password after con
       expect.objectContaining({
         action: "connect_password",
         host: "mac.ts.net",
-        user: "demonlord",
-        password: "sample-only",
+        user: "example-user",
+        password: testPassword,
         port: 22,
         host_key: "SHA256:sample",
       }),

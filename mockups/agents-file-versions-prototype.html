@@ -20,7 +20,7 @@ const $=s=>document.querySelector(s);
 const root=$('.versionbox'), content=$('.contentpreview'), initial=content.querySelector('pre').textContent;
 const originals={id:'file-config-default',name:'Default',content:initial,history:[{n:8,text:initial,why:'Edited merge result'},{n:7,text:initial.replace('"high"','"medium"'),why:'Updated from Windows'},{n:6,text:initial.replace('web_search = true','web_search = false'),why:'Edited on Ubuntu'}],assigned:true};
 const variants=[originals], extensionVariants=[];let active=originals,dirty=false,pending=null,offline=false,conflict=false,seq=1,variantOrigin='config';
-const envs=[{name:'Ubuntu · WSL',machine:'DESKTOP-10EKAN2',path:'/home/demonlord721/.codex/config.toml',rev:8,state:'Synced'},{name:'Windows',machine:'DESKTOP-10EKAN2',path:'C:\Users\demon\.codex\config.toml',rev:8,state:'Synced'},{name:'macOS',machine:'MacBook Air',path:'/Users/demonlord/.codex/config.toml',rev:8,state:'Synced'}];
+const envs=[{name:'Ubuntu · WSL',machine:'DESKTOP-10EKAN2',path:'/home/example-user/.codex/config.toml',rev:8,state:'Synced'},{name:'Windows',machine:'DESKTOP-10EKAN2',path:'C:\Users\example-user\.codex\config.toml',rev:8,state:'Synced'},{name:'macOS',machine:'MacBook Air',path:'/Users/example-user/.codex/config.toml',rev:8,state:'Synced'}];
 // Preserve literal Windows separators in JavaScript.
 envs[1].path=['C:','Users','demon','.codex','config.toml'].join(String.fromCharCode(92));
 function el(tag,cls,text){const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=text;return x}

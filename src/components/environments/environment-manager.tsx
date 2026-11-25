@@ -1,4 +1,11 @@
-import { ChevronRight, Laptop, Monitor, Pencil, RefreshCw } from "lucide-react";
+import {
+  ChevronRight,
+  Info,
+  Laptop,
+  Monitor,
+  Pencil,
+  RefreshCw,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { transport } from "@/lib/transport";
 import { useEnvironmentStore } from "@/stores/environment-store";
@@ -14,6 +21,56 @@ import {
   type LocalPaths,
 } from "./environment-paths";
 import { SyncControl } from "./path-entry";
+
+const fieldDescriptions: Record<string, string> = {
+  Connection:
+    "How HarnessKit reaches the files: SSH connects over a network, WSL and Docker use local tools, and local paths use mounted folders.",
+  Authentication:
+    "Username and password saves credentials securely for reuse. SSH key / agent uses keys or an existing alias configured where HarnessKit runs.",
+  Machine:
+    "A display label grouping environments on the same computer. For example, Windows and WSL can share a machine label. It does not change the connection address.",
+  Environment:
+    "A display name for this set of agent files, such as macOS, Ubuntu, or a container. You can rename it later without changing its connection.",
+  "Environment name":
+    "Changes only the display name. Connections, tracked paths, versions, and sync settings keep their existing identity.",
+  Host: "The target computer’s hostname or IP address, including a Tailscale address. An SSH alias works only with key / agent authentication. Do not include a URL or username.",
+  "SSH user":
+    "The login account on the target computer, not the account running HarnessKit. Required for password authentication; optional when supplied by SSH configuration.",
+  "SSH port":
+    "The target SSH server’s port. Password connections default to 22. Key / agent connections use your SSH configuration when this is blank.",
+  Password:
+    "The target account’s login password. Saved in the operating system’s secure credential store, or protected by Windows in WSL, for future connections. Never saved in source code or environment settings.",
+  "WSL distribution":
+    "The registered distribution name shown by wsl --list. It identifies the Linux environment on this Windows machine.",
+  Container:
+    "The name or ID of an existing Docker container. It must be running and have Python 3 installed.",
+  "Docker context":
+    "The Docker context used to locate the container. Leave blank to use the current context where HarnessKit runs.",
+  Provider:
+    "The agent whose skills live in the selected directory, such as Codex or Claude Code.",
+  "Skills directory":
+    "An existing skills folder accessible to the HarnessKit process. For a network share, mount it first; this field does not create a network connection.",
+};
+function FieldHelp({ field }: { field: string }) {
+  const text = fieldDescriptions[field];
+  if (!text) return null;
+  return (
+    <span
+      tabIndex={0}
+      role="img"
+      aria-label={`${field}: ${text}`}
+      className="group relative ml-1 inline-flex cursor-help align-middle text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      <Info size={12} />
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden w-56 max-w-[70vw] rounded-md border border-border bg-popover p-2 text-left text-xs font-normal leading-relaxed text-popover-foreground shadow-md group-hover:block group-focus:block"
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
 
 const button =
   "rounded border border-border px-3 py-1.5 text-xs hover:bg-accent disabled:opacity-40";
@@ -210,8 +267,10 @@ export function EnvironmentManager({
                         }}
                       >
                         <label className="flex-1 text-xs">
-                          Environment name
+                          Environment name{" "}
+                          <FieldHelp field="Environment name" />
                           <input
+                            aria-label="Environment name"
                             autoFocus
                             required
                             maxLength={120}
@@ -458,8 +517,9 @@ export function EnvironmentManager({
         >
           <h3 className="text-sm font-semibold">Add a connection</h3>
           <label className="block text-xs">
-            Connection{" "}
+            Connection <FieldHelp field="Connection" />{" "}
             <select
+              aria-label="Connection"
               className="ml-2 rounded border border-border bg-background p-1"
               value={kind}
               onChange={(e) => {
@@ -479,7 +539,7 @@ export function EnvironmentManager({
           </label>
           {["ssh", "tailscale", "ssh-vm"].includes(kind) && (
             <label className="block text-xs">
-              Authentication
+              Authentication <FieldHelp field="Authentication" />
               <select
                 aria-label="Authentication"
                 className="mt-1 block w-full rounded border border-border bg-background p-2"
@@ -520,8 +580,9 @@ export function EnvironmentManager({
                   : []),
           ].map(([value, setter, label]) => (
             <label key={String(label)} className="block text-xs">
-              {String(label)}
+              {String(label)} <FieldHelp field={String(label)} />
               <input
+                aria-label={String(label)}
                 required={
                   kind === "local" ||
                   (kind === "wsl" && label === "WSL distribution") ||
@@ -532,7 +593,7 @@ export function EnvironmentManager({
                 placeholder={
                   label === "SSH user"
                     ? passwordSsh
-                      ? "e.g. demonlord"
+                      ? "Remote account username"
                       : "Use SSH configuration"
                     : label === "SSH port"
                       ? passwordSsh
@@ -557,8 +618,9 @@ export function EnvironmentManager({
           {passwordSsh && (
             <div className="space-y-3 rounded-lg border border-primary/25 bg-primary/5 p-3">
               <label className="block text-xs">
-                Password
+                Password <FieldHelp field="Password" />
                 <input
+                  aria-label="Password"
                   type="password"
                   autoComplete="new-password"
                   required

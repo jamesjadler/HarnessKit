@@ -29,5 +29,5 @@ CAS drafts on remount; absent paths mistakenly treated as deletions; removed cat
 - Frontend: 420 tests passed in 58 files; production build passed.
 - Backend: 914 tests passed, one live SSH test ignored; CLI build passed.
 - Review fixes: canonical catalog identity lookup, picker portal no premature draft save, failed remove retains draft, empty skills-only projects rejected, all component tombstones cleared on explicit project readdition.
-- Live local API: Ubuntu picker ~ resolves /home/demonlord721; Windows picker ~ resolves /mnt/c/Users/demon; all 68 catalog entries carry kind/tracked/is_directory metadata.
+- Live local API: Ubuntu picker ~ resolves /home/example-user; Windows picker ~ resolves /mnt/c/Users/demon; all 68 catalog entries carry kind/tracked/is_directory metadata.
 - Review server restarted at localhost:7070, log /tmp/hk-quiet-tree-server.log. No real SSH/Docker target rerun. Config/instruction comparison API remains existing behavior; new components are detected and editable as paths.
