@@ -344,6 +344,7 @@ pub fn discover(
             }
         }
         r.projects.push(nested::Project {
+            tracked: true,
             id: project_id,
             environment: environment.into(),
             agent: f.agent,

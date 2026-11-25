@@ -39,7 +39,7 @@ export function isTracked(
     c.home_enabled !== false &&
     (c.tracked ?? !!c.provider) &&
     !env.providers.some((p) => p.id === c.provider && p.disabled) &&
-    !projects.some((p) => p.id === c.project && p.enabled === false)
+    !projects.some((p) => p.id === c.project && (p.enabled === false || p.tracked === false))
   );
 }
 export function environmentHealth(
@@ -63,7 +63,7 @@ export function environmentHealth(
   for (const p of projects.filter(
     (p) =>
       p.environment === env.id &&
-      p.enabled !== false &&
+      p.enabled !== false && p.tracked !== false &&
       !all.some((c) => c.name === p.agent && c.home_enabled === false),
   )) {
     if (
@@ -277,6 +277,9 @@ function AgentPaths({
           />
         </summary>
         <div className="quiet-components">
+          {project.enabled !== false && project.tracked === false && (
+            <p className="px-4 py-2 text-xs text-muted-foreground">Not tracked: the agent base path is unavailable or disabled.</p>
+          )}
           {rows(entries.filter((c) => c.project === project.id))}
         </div>
       </details>
@@ -347,7 +350,7 @@ function AgentPaths({
         {([true, false] as const).map((tracking) => {
           const items = tracking ? tracked : untracked;
           const projectItems = projects.filter(
-            (p) => (p.enabled !== false) === tracking,
+            (p) => (p.enabled !== false && p.tracked !== false) === tracking,
           );
           return (
             <details
@@ -430,7 +433,7 @@ export function EnvironmentPaths({
       ) ||
       data?.registry.projects?.some(
         (p) =>
-          p.environment === env.id && p.agent === agent && p.enabled !== false,
+          p.environment === env.id && p.agent === agent && p.enabled !== false && p.tracked !== false,
       ),
   );
   const healthy = (environment: string, provider: string) =>

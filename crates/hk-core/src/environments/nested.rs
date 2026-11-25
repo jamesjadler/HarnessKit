@@ -28,6 +28,8 @@ pub struct EntrySetting {
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Project {
+    #[serde(default = "yes")]
+    pub tracked: bool,
     #[serde(default)]
     pub components: Vec<super::discovery::Component>,
     pub id: String,
@@ -176,6 +178,7 @@ pub fn reconcile(
                     .any(|x| x.environment == "local" && x.agent == a.name() && x.root == p.path)
             {
                 r.projects.push(Project {
+                    tracked: true,
                     id: format!("legacy:{}:{}", p.id, a.name()),
                     components: vec![],
                     environment: "local".into(),
@@ -374,9 +377,34 @@ pub fn reconcile(
             p.access = access(&p.root, false);
         }
     }
+    gate_projects_by_agent_home(r);
     access_errors(r);
     Ok(())
 }
+// Project instructions shared by multiple agents do not establish that those
+// agents are available in this environment. Preserve intent, but suspend tracking.
+fn gate_projects_by_agent_home(r: &mut Registry) {
+    let available: std::collections::BTreeSet<_> = r.catalog.iter()
+        .filter(|c| c.project.is_none() && c.home_enabled && c.home_access.error.is_none()
+            && (c.home_access.state == "available"
+                || (c.home_access.state == "unchecked" && c.detected)))
+        .map(|c| (c.environment.clone(), c.name.clone())).collect();
+    for project in &mut r.projects {
+        project.tracked = project.enabled && available.contains(&(project.environment.clone(), project.agent.clone()));
+    }
+    for entry in r.catalog.iter_mut().filter(|c| c.project.is_some()) {
+        if r.projects.iter().any(|p| Some(&p.id) == entry.project.as_ref() && !p.tracked) {
+            entry.tracked = false;
+            entry.home_enabled = false;
+            if let Some(provider) = r.environments.iter_mut()
+                .find(|e| e.id == entry.environment)
+                .and_then(|e| e.providers.iter_mut().find(|p| Some(&p.id) == entry.provider.as_ref())) {
+                provider.disabled = true;
+            }
+        }
+    }
+}
+
 fn access_errors(r: &mut Registry) {
     for c in &r.catalog {
         if !c.tracked {
@@ -421,7 +449,8 @@ pub fn check(r: &mut Registry, environment: &str) -> Result<(), HkError> {
             c.home_access = access(&c.home, false);
             c.error = c.access.error.clone();
         }
-        access_errors(r);
+        gate_projects_by_agent_home(r);
+    access_errors(r);
         return Ok(());
     }
     let mut paths: Vec<_> = r
@@ -508,12 +537,43 @@ pub fn check(r: &mut Registry, environment: &str) -> Result<(), HkError> {
             p.access = c.home_access.clone();
         }
     }
+    gate_projects_by_agent_home(r);
     access_errors(r);
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn missing_remote_agent_home_prevents_project_tracking() {
+        use super::*;
+        let mut r = Registry::default();
+        r.catalog.push(CatalogEntry {
+            environment: "mac".into(), name: "cursor".into(),
+            home_enabled: true, detected: false,
+            home_access: Access { state: "missing".into(), count: None, error: Some("No such file or directory".into()) },
+            ..Default::default()
+        });
+        r.projects.push(Project {
+            id: "project".into(), environment: "mac".into(), agent: "cursor".into(),
+            root: "/projects/example".into(), components: vec![], access: Access::default(), enabled: true, tracked: true,
+        });
+        r.catalog.push(CatalogEntry {
+            environment: "mac".into(), name: "cursor".into(), project: Some("project".into()),
+            kind: "instructions".into(), tracked: true, home_enabled: true,
+            home_access: Access { state: "available".into(), count: None, error: None },
+            ..Default::default()
+        });
+        gate_projects_by_agent_home(&mut r);
+        assert!(!r.projects[0].tracked);
+        assert!(r.projects[0].enabled, "Keep user intent for when the agent becomes available");
+        assert!(!r.catalog[1].tracked);
+        assert!(!r.catalog[1].home_enabled);
+        r.catalog[0].home_access = Access { state: "available".into(), count: None, error: None };
+        gate_projects_by_agent_home(&mut r);
+        assert!(r.projects[0].tracked);
+    }
+
     use super::super::service::{Request, execute};
     use super::*;
     fn setup() -> (tempfile::TempDir, Store, Vec<Box<dyn AgentAdapter>>) {

@@ -5,6 +5,7 @@ export interface PathAccess {
   error: string | null;
 }
 export interface AgentProject {
+  tracked?: boolean;
   enabled?: boolean;
   access?: PathAccess;
   id: string;
