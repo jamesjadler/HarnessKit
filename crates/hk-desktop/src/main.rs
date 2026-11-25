@@ -39,6 +39,7 @@ fn main() {
             commands::discover_environments,
             commands::environment_extension,
             commands::environment_command,
+            commands::managed_file_command,
             commands::read_comparison_file,
             commands::save_comparison_file,
             commands::list_extensions,

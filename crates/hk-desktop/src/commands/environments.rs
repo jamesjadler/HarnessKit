@@ -34,6 +34,19 @@ pub fn save_comparison_file(
     provider: Option<String>,
 ) -> Result<TextSnapshot, HkError> {
     let home = hk_core::home_dir();
+    let store = hk_core::store::Store::open(&home.join(".harnesskit/metadata.db"))?;
+    if let Some(snapshot) = environments::managed_files::comparison_save(
+        &home,
+        &state.adapters,
+        &store,
+        environment.as_deref(),
+        &path,
+        &expected,
+        &content,
+    )? {
+        return Ok(snapshot);
+    }
+
     if let Some(env) = environment {
         return environments::environment_text(
             &home,
@@ -83,4 +96,14 @@ pub fn environment_extension(
             enabled,
         },
     )
+}
+
+#[tauri::command]
+pub fn managed_file_command(
+    state: State<AppState>,
+    req: hk_core::environments::managed_files::Request,
+) -> Result<hk_core::environments::managed_files::Response, HkError> {
+    let home = hk_core::home_dir();
+    let store = hk_core::store::Store::open(&home.join(".harnesskit/metadata.db"))?;
+    hk_core::environments::managed_files::execute(&home, &state.adapters, &store, req)
 }

@@ -95,6 +95,8 @@ impl Default for Preferences {
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Registry {
     #[serde(default)]
+    pub managed_files: Vec<super::managed_files::ManagedFile>,
+    #[serde(default)]
     pub path_homes: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub forgotten: std::collections::BTreeSet<String>,

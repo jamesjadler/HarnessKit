@@ -219,3 +219,5 @@ pub mod catalog;
 
 pub mod discovery;
 pub mod nested;
+
+pub mod managed_files;

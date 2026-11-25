@@ -76,7 +76,60 @@ def component_paths(root,pattern):
     return result
 try:
     action=req['action']
-    if action=='expand_path':
+    if action=='managed_scan':
+        result=[];seen=set()
+        for source in req['sources']:
+            root=pathlib.Path(source['root'])
+            if not root.exists(): continue
+            root=safe_path(root)
+            for candidate in component_paths(root,source['pattern']) if source['pattern'] else [root]:
+                if not candidate.exists(): continue
+                candidate=safe_path(candidate)
+                if candidate!=root and root not in candidate.parents: raise ValueError('File outside inventory root')
+                paths=[candidate]
+                if candidate.is_dir():
+                    paths=[]
+                    for base,dirs,names in os.walk(candidate,followlinks=False):
+                        dirs[:]=[d for d in dirs if d not in ('.git','node_modules','target','.venv','__pycache__') and not (pathlib.Path(base)/d).is_symlink()]
+                        if len(pathlib.Path(base).relative_to(candidate).parts)>=16: dirs[:]=[]
+                        paths.extend(pathlib.Path(base)/name for name in names)
+                        if len(paths)>10000: raise ValueError('Inventory exceeds file limit')
+                for path in paths:
+                    key=(source.get('group',''),str(path))
+                    if path.is_symlink() or not path.is_file() or key in seen: continue
+                    if len(seen)>=10000: raise ValueError('Inventory exceeds file limit')
+                    seen.add(key);content=None;fingerprint=None;error=None
+                    try:
+                        safe_path(path)
+                        if path.stat().st_size>4*1024*1024: raise ValueError('File exceeds text size limit')
+                        data=path.read_bytes()
+                        if b'\x00' in data: raise ValueError('Binary file')
+                        content=data.decode('utf-8');fingerprint=hashlib.sha256(data).hexdigest()
+                    except (ValueError,OSError) as exc: error=str(exc)
+                    result.append({'group':source.get('group',''),'path':str(path),'root':str(root),'relative':path.relative_to(root).as_posix(),'category':source['category'],'content':content,'fingerprint':fingerprint,'error':error})
+    elif action in ('managed_read','managed_save'):
+        root=safe_path(pathlib.Path(req['root']));path=safe_path(pathlib.Path(req['path']))
+        if path!=root and root not in path.parents: raise ValueError('File outside inventory root')
+        if not path.is_file() or path.stat().st_size>4*1024*1024: raise ValueError('Select an existing text file below 4 MiB')
+        data=path.read_bytes()
+        if b'\x00' in data: raise ValueError('Binary file')
+        content=data.decode('utf-8');revision=hashlib.sha256(data).hexdigest()
+        if action=='managed_save':
+            if revision!=req['expected']: raise ValueError('File changed since last scan')
+            replacement=req['content'].encode('utf-8')
+            if len(replacement)>4*1024*1024 or b'\x00' in replacement: raise ValueError('Invalid text')
+            fd,staged=tempfile.mkstemp(prefix='.hk-text-',dir=path.parent)
+            try:
+                with os.fdopen(fd,'wb') as f:
+                    f.write(replacement);f.flush();os.fsync(f.fileno())
+                os.chmod(staged,path.stat().st_mode&0o777)
+                if safe_path(path)!=path or hashlib.sha256(path.read_bytes()).hexdigest()!=revision: raise ValueError('File changed while saving')
+                os.replace(staged,path)
+            finally:
+                if os.path.exists(staged): os.unlink(staged)
+            content=req['content'];revision=hashlib.sha256(replacement).hexdigest()
+        result={'path':str(path),'content':content,'revision':revision,'captured_at':datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    elif action=='expand_path':
         result=str(pathlib.Path(req['path']).expanduser())
     elif action=='browse_paths':
         path=pathlib.Path(req['path']).expanduser()

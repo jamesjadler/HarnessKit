@@ -43,6 +43,18 @@ pub async fn save_comparison_file(
     Json(req): Json<SaveText>,
 ) -> Result<Json<TextSnapshot>, ApiError> {
     blocking(move || {
+        let store = hk_core::store::Store::open(&state.home.join(".harnesskit/metadata.db"))?;
+        if let Some(snapshot) = environments::managed_files::comparison_save(
+            &state.home,
+            &state.adapters,
+            &store,
+            req.environment.as_deref(),
+            &req.path,
+            &req.expected,
+            &req.content,
+        )? {
+            return Ok(snapshot);
+        }
         if let Some(env) = req.environment {
             return environments::environment_text(
                 &state.home,
@@ -84,4 +96,20 @@ pub async fn environment_extension(
     Json(req): Json<hk_core::environments::inventory::ActionRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     blocking(move || hk_core::environments::inventory::action(&state.home, req)).await
+}
+
+pub async fn managed_file_command(
+    State(state): State<WebState>,
+    Json(body): Json<super::ReqBody<hk_core::environments::managed_files::Request>>,
+) -> Result<Json<hk_core::environments::managed_files::Response>, ApiError> {
+    blocking(move || {
+        let store = hk_core::store::Store::open(&state.home.join(".harnesskit/metadata.db"))?;
+        hk_core::environments::managed_files::execute(
+            &state.home,
+            &state.adapters,
+            &store,
+            body.req,
+        )
+    })
+    .await
 }

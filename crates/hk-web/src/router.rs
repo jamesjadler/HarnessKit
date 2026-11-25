@@ -83,6 +83,10 @@ pub fn build_router(state: WebState) -> Router {
             post(handlers::environments::environment_extension),
         )
         .route(
+            "/api/managed_file_command",
+            post(handlers::environments::managed_file_command),
+        )
+        .route(
             "/api/environment_command",
             post(handlers::environments::environment_command)
                 .layer(axum::extract::DefaultBodyLimit::max(128 * 1024 * 1024)),
