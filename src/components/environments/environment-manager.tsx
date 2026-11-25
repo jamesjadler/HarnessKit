@@ -103,6 +103,7 @@ export function EnvironmentManager({
     >([]);
   const [authentication, setAuthentication] = useState("password");
   const [password, setPassword] = useState("");
+  const [connecting, setConnecting] = useState(false);
   const [hostKey, setHostKey] = useState("");
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
@@ -450,6 +451,8 @@ export function EnvironmentManager({
           className="space-y-3 rounded-xl border border-border border-t-4 border-t-primary p-4"
           onSubmit={async (e) => {
             e.preventDefault();
+            if (connecting) return;
+            setConnecting(true);
             setConnectionError(null);
             try {
               if (
@@ -515,6 +518,8 @@ export function EnvironmentManager({
               setConnectionError(
                 parseError(e instanceof Error ? e.message : e).message,
               );
+            } finally {
+              setConnecting(false);
             }
           }}
         >
@@ -705,7 +710,7 @@ export function EnvironmentManager({
             disabled={busy}
             className="rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50"
           >
-            {busy ? "Checking connection…" : "Test connection and add"}
+            {connecting ? "Checking connection…" : busy ? "Waiting for environment operation…" : "Test connection and add"}
           </button>
         </form>
       )}

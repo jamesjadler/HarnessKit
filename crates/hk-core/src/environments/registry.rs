@@ -9,6 +9,25 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+// Scans may hold the registry while checking slow or unavailable paths.
+// Interactive requests must fail clearly instead of waiting indefinitely.
+fn acquire_registry_lock(lock: &fs::File, timeout: std::time::Duration) -> Result<(), HkError> {
+    let start = std::time::Instant::now();
+    loop {
+        match lock.try_lock_exclusive() {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                if start.elapsed() >= timeout {
+                    return Err(HkError::Conflict(
+                        "Environment scan is still using the registry. Connection check could not continue; wait for the scan to finish and try again.".into(),
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+}
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Environment {
     #[serde(default)]
@@ -153,7 +172,7 @@ impl Coordinator {
             .read(true)
             .write(true)
             .open(self.root.join("coordinator.lock"))?;
-        lock.lock_exclusive()?;
+        acquire_registry_lock(&lock, std::time::Duration::from_secs(10))?;
         let path = self.root.join("registry.json");
         let mut registry = match fs::read(&path) {
             Ok(bytes) => serde_json::from_slice(&bytes)?,
@@ -916,6 +935,20 @@ pub fn decision(r: &Registry, s: &Skill) -> Decision {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn registry_contention_returns_error_and_recovers() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("lock");
+        let owner = fs::File::create(&path).unwrap();
+        let waiter = fs::File::open(&path).unwrap();
+        owner.lock_exclusive().unwrap();
+        let error = acquire_registry_lock(&waiter, std::time::Duration::from_millis(20))
+            .unwrap_err();
+        assert!(error.to_string().contains("Environment scan is still using the registry"));
+        drop(owner);
+        acquire_registry_lock(&waiter, std::time::Duration::from_millis(20)).unwrap();
+    }
+
     fn setup() -> (tempfile::TempDir, Coordinator) {
         let t = tempfile::tempdir().unwrap();
         let c = Coordinator::new(t.path().join("state"));

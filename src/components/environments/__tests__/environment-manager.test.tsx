@@ -306,3 +306,11 @@ it("renames an environment without replacing its identity", async () => {
     }),
   );
 });
+
+it("does not label unrelated environment work as a connection check", () => {
+  useEnvironmentStore.setState({ busy: true });
+  render(<EnvironmentManager localPaths={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "Add environment" }));
+  expect(screen.queryByText("Checking connection…")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Waiting for environment operation…" })).toBeDisabled();
+});
