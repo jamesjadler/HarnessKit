@@ -130,7 +130,7 @@ it("locks selection, reload and close while applying a result", async () => {
     target: { value: "/peer/config.toml" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Mark block resolved" }));
-  fireEvent.click(screen.getByRole("button", { name: "Save & apply result" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save & apply left result" }));
   expect(
     screen.getByRole("button", { name: "Close comparison" }),
   ).toBeDisabled();

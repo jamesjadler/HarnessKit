@@ -14,6 +14,9 @@ import {
 import { useAgentConfigStore } from "@/stores/agent-config-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useExtensionStore } from "@/stores/extension-store";
+import { useManagedFileStore } from "@/stores/managed-file-store";
+import { withManagedAgents } from "@/lib/managed-files";
+import { ManagedFileList } from "./managed-file-list";
 import { ConfigSection } from "./config-section";
 import { ExtensionsSummaryCard } from "./extensions-summary-card";
 import { SectionAnchorRail } from "./section-anchor-rail";
@@ -21,7 +24,13 @@ import { SectionAnchorRail } from "./section-anchor-rail";
 export function AgentDetail() {
   const { t } = useTranslation("agents");
   const { t: tc } = useTranslation("common");
-  const agentDetails = useAgentConfigStore((s) => s.agentDetails);
+  const localDetails = useAgentConfigStore((s) => s.agentDetails);
+  const managedFiles = useManagedFileStore((s) => s.files);
+  const managedError = useManagedFileStore((s) => s.error);
+  const agentDetails = useMemo(
+    () => withManagedAgents(localDetails, managedFiles),
+    [localDetails, managedFiles],
+  );
   const selectedAgent = useAgentConfigStore((s) => s.selectedAgent);
   const addCustomPath = useAgentConfigStore((s) => s.addCustomPath);
   const allExtensions = useExtensionStore((s) => s.extensions);
@@ -71,11 +80,24 @@ export function AgentDetail() {
     );
   }
 
+  const managed = managedFiles.filter(
+    (f) =>
+      f.agent === agent.name &&
+      (scope.type === "all" ||
+        (scope.type === "global"
+          ? f.scope === "global"
+          : f.scope_path === scope.path)),
+  );
+  const managedPaths = new Set(
+    managed.flatMap((f) => f.copies.map((c) => c.path)),
+  );
   const customFiles = agent.config_files.filter(
-    (f) => f.custom_id != null && matchesScope(f.scope),
+    (f) =>
+      f.custom_id != null && matchesScope(f.scope) && !managedPaths.has(f.path),
   );
   const nonCustomFiles = agent.config_files.filter(
-    (f) => f.custom_id == null && matchesScope(f.scope),
+    (f) =>
+      f.custom_id == null && matchesScope(f.scope) && !managedPaths.has(f.path),
   );
   const byCategory = new Map<ConfigCategory, typeof agent.config_files>();
   for (const cat of CONFIG_CATEGORY_ORDER) byCategory.set(cat, []);
@@ -87,7 +109,8 @@ export function AgentDetail() {
   // Scope-aware empty state: when scoped to a specific project and the agent
   // has no config files in that scope, render a focused empty card instead of
   // a stack of empty section headers.
-  const totalVisible = nonCustomFiles.length + customFiles.length;
+  const totalVisible =
+    nonCustomFiles.length + customFiles.length + managed.length;
   const isProjectScopeEmpty = scope.type === "project" && totalVisible === 0;
 
   const summaryActiveScope =
@@ -224,6 +247,12 @@ export function AgentDetail() {
         </div>
       )}
 
+      {managedError && (
+        <p role="alert" className="mb-3 text-xs text-destructive">
+          File inventory: {managedError}
+        </p>
+      )}
+      <ManagedFileList files={managed} />
       {isProjectScopeEmpty ? (
         <div className="m-4 rounded-xl border border-dashed p-6 text-center">
           <p className="text-sm font-medium">

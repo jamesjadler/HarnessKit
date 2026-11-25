@@ -24,6 +24,8 @@ import { AgentMascot } from "@/components/shared/agent-mascot/agent-mascot";
 import type { AgentDetail } from "@/lib/types";
 import { agentDisplayName } from "@/lib/types";
 import { useAgentConfigStore } from "@/stores/agent-config-store";
+import { useManagedFileStore } from "@/stores/managed-file-store";
+import { withManagedAgents } from "@/lib/managed-files";
 import { useAgentStore } from "@/stores/agent-store";
 
 function SortableAgentItem({
@@ -94,7 +96,12 @@ function SortableAgentItem({
 
 export function AgentList() {
   const { t } = useTranslation("agents");
-  const agentDetails = useAgentConfigStore((s) => s.agentDetails);
+  const localDetails = useAgentConfigStore((s) => s.agentDetails);
+  const managedFiles = useManagedFileStore((s) => s.files);
+  const agentDetails = useMemo(
+    () => withManagedAgents(localDetails, managedFiles),
+    [localDetails, managedFiles],
+  );
   const selectedAgent = useAgentConfigStore((s) => s.selectedAgent);
   const selectAgent = useAgentConfigStore((s) => s.selectAgent);
   const agentOrder = useAgentStore((s) => s.agentOrder);
@@ -116,8 +123,19 @@ export function AgentList() {
   // reference the agent store; default to visible when an agent is unknown
   // (store not loaded yet) so the list never flashes empty.
   const disabledNames = useMemo(
-    () => new Set(agents.filter((a) => !a.enabled).map((a) => a.name)),
-    [agents],
+    () =>
+      new Set(
+        agents
+          .filter(
+            (a) =>
+              !a.enabled &&
+              !managedFiles.some(
+                (f) => f.agent === a.name && f.copies.some((c) => c.enabled),
+              ),
+          )
+          .map((a) => a.name),
+      ),
+    [agents, managedFiles],
   );
 
   const visible = useMemo(

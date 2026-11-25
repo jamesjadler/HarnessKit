@@ -5,6 +5,7 @@ import { AgentDetail } from "@/components/agents/agent-detail";
 import { AgentList } from "@/components/agents/agent-list";
 import { useScope } from "@/hooks/use-scope";
 import { useAgentConfigStore } from "@/stores/agent-config-store";
+import { useManagedFileStore } from "@/stores/managed-file-store";
 import { useProjectStore } from "@/stores/project-store";
 import {
   resolveDeepLinkScope,
@@ -28,6 +29,16 @@ export default function AgentsPage() {
     if (!hydrated) return;
     fetch();
   }, [fetch, hydrated]);
+
+  const refreshManaged = useManagedFileStore((s) => s.refresh);
+  useEffect(() => {
+    if (!hydrated) return;
+    void refreshManaged();
+    const interval = window.setInterval(() => {
+      if (!document.hidden) void refreshManaged();
+    }, 15000);
+    return () => window.clearInterval(interval);
+  }, [hydrated, refreshManaged]);
 
   // When the user switches scope (e.g., via the Sidebar ScopeSwitcher), collapse
   // all expanded file previews and drop any pending focus signal — the file

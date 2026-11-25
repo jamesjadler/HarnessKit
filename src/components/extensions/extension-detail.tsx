@@ -16,6 +16,7 @@ import {
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RemoteSkillFiles } from "@/components/environments/remote-skill-files";
+import { CreateVariantAction } from "@/components/extensions/create-variant-action";
 import { DeleteDialog } from "@/components/extensions/delete-dialog";
 import { CliSections } from "@/components/extensions/detail-cli-sections";
 import { DetailHeader } from "@/components/extensions/detail-header";
@@ -346,6 +347,9 @@ export function ExtensionDetail() {
         updateExtension={updateExtension}
         onClose={() => setSelectedId(null)}
       />
+      <div className="px-4">
+        <CreateVariantAction group={group} />
+      </div>
 
       {/* Scrollable body — keyed by group so switching extensions remounts
           the container and the scroll position starts at the top. */}
