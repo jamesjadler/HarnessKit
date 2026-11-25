@@ -1,21 +1,9 @@
 import { clsx } from "clsx";
-import {
-  Check,
-  Download,
-  FolderOpen,
-  FolderSearch,
-  Loader2,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Trash2,
-  TriangleAlert,
-  X,
-} from "lucide-react";
-import { useEffect, useState } from "react";
+import { Download, Loader2, RefreshCw } from "lucide-react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
-import { openDirectoryPicker } from "@/lib/dialog";
+import { EnvironmentManager } from "@/components/environments/environment-manager";
 import {
   applyLanguagePreference,
   getStoredLanguagePreference,
@@ -23,9 +11,7 @@ import {
 } from "@/lib/i18n";
 import { api } from "@/lib/invoke";
 import { isDesktop, isMac } from "@/lib/transport";
-import { agentDisplayName, type DiscoveredProject } from "@/lib/types";
 import { useAgentStore } from "@/stores/agent-store";
-import { useProjectStore } from "@/stores/project-store";
 import { toast } from "@/stores/toast-store";
 import type { AgentVisibility, AppIcon, ThemeName } from "@/stores/ui-store";
 import { useUIStore } from "@/stores/ui-store";
@@ -179,7 +165,6 @@ function WebUpdateSection() {
 
 export default function SettingsPage() {
   const { t } = useTranslation("settings");
-  const { t: tc } = useTranslation("common");
   const languagePreference = getStoredLanguagePreference();
   const {
     themeName,
@@ -193,32 +178,8 @@ export default function SettingsPage() {
     setAgentVisibility,
     setAutoDisabledAgents,
   } = useUIStore();
-  const { projects, loading, loadProjects, addProject, removeProject } =
-    useProjectStore();
-
-  const {
-    agents,
-    fetch: fetchAgents,
-    updatePath,
-    setEnabled,
-    setEnabledBulk,
-  } = useAgentStore();
+  const { fetch: fetchAgents, setEnabledBulk } = useAgentStore();
   const [searchParams, setSearchParams] = useSearchParams();
-
-  const [editingAgent, setEditingAgent] = useState<string | null>(null);
-  const [editingPath, setEditingPath] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [projectPathInput, setProjectPathInput] = useState("");
-  const [discoveredProjects, setDiscoveredProjects] = useState<
-    DiscoveredProject[] | null
-  >(null);
-  const [discoveredSelected, setDiscoveredSelected] = useState<Set<string>>(
-    new Set(),
-  );
-
-  useEffect(() => {
-    loadProjects();
-  }, [loadProjects]);
 
   useEffect(() => {
     fetchAgents();
@@ -235,10 +196,6 @@ export default function SettingsPage() {
       }
     }
   }, [searchParams, setSearchParams]);
-
-  const agentOrder = useAgentStore((s) => s.agentOrder);
-  const agentNames = agentOrder;
-  const agentMap = new Map(agents.map((a) => [a.name.toLowerCase(), a]));
 
   // Entering "Detected only" is handled by the App-level reconcile effect: it
   // disables undetected agents and records them in the snapshot (so it also
@@ -262,79 +219,6 @@ export default function SettingsPage() {
     );
   };
 
-  const existingPaths = new Set(projects.map((p) => p.path));
-
-  const handleAddPath = async (path: string) => {
-    if (!path) return;
-    setAdding(true);
-    try {
-      await addProject(path);
-      setDiscoveredProjects(null);
-      setProjectPathInput("");
-      toast.success(t("projectPaths.toast.projectAdded"));
-    } catch {
-      try {
-        const results = await api.discoverProjects(path);
-        if (results.length > 0) {
-          setDiscoveredProjects(results);
-          setDiscoveredSelected(new Set());
-        } else {
-          toast.error(t("projectPaths.toast.noProjectsFound"));
-        }
-      } catch (e) {
-        console.error("Failed to discover projects:", e);
-        toast.error(t("projectPaths.toast.failedDiscover"));
-      }
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const handleBrowseProject = async () => {
-    const path = await openDirectoryPicker({
-      title: t("projectPaths.selectDir"),
-    });
-    if (path) handleAddPath(path);
-  };
-
-  const handleAddDiscovered = async () => {
-    setAdding(true);
-    let added = 0;
-    const failed: string[] = [];
-    try {
-      for (const path of discoveredSelected) {
-        try {
-          await addProject(path);
-          added++;
-        } catch {
-          failed.push(path);
-        }
-      }
-      if (added > 0)
-        toast.success(t("projectPaths.toast.addedCount", { count: added }));
-      if (failed.length > 0)
-        toast.error(
-          t("projectPaths.toast.failedAdd", {
-            count: failed.length,
-            paths: failed.join(", "),
-          }),
-        );
-    } finally {
-      setAdding(false);
-      setDiscoveredProjects(null);
-      setDiscoveredSelected(new Set());
-    }
-  };
-
-  const toggleDiscovered = (path: string) => {
-    setDiscoveredSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  };
-
   return (
     <div className="flex flex-1 flex-col min-h-0 -mb-6">
       <div className="shrink-0 pb-4">
@@ -346,17 +230,17 @@ export default function SettingsPage() {
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="max-w-2xl mx-auto space-y-8 pb-6">
+        <div className="w-full max-w-7xl mx-auto space-y-8 pb-6">
           {/* Agent Paths */}
           <section className="space-y-4">
             {/* Header: title + description, with visibility toggle top-right */}
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground">
-                  {t("agentPaths.section")}
+                  Environments &amp; Agent Paths
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {t("agentPaths.description")}
+                  Expand a machine and environment to manage provider paths.
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   {t("agentPaths.visibilityHint")}
@@ -385,343 +269,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="flex flex-col rounded-lg border border-border bg-card shadow-sm divide-y divide-border">
-              {agentNames.map((agent) => {
-                const info = agentMap.get(agent);
-                const isEnabled = info?.enabled ?? true;
-                // In "Detected only" we auto-disable undetected agents, so lock
-                // their toggle — switch to "All agents" to change them. Detected
-                // agents stay toggleable: enabling/disabling them is the user's
-                // call.
-                const locked =
-                  agentVisibility === "detected" && !(info?.detected ?? false);
-                return (
-                  <div
-                    key={agent}
-                    className={clsx(
-                      "flex items-center gap-3 px-4 py-2.5 transition-opacity",
-                      !isEnabled && "opacity-50",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      disabled={locked}
-                      title={locked ? t("agentPaths.lockedHint") : undefined}
-                      onClick={() => setEnabled(agent, !isEnabled)}
-                      className={clsx(
-                        "shrink-0 w-16 text-center rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
-                        isEnabled
-                          ? "bg-primary/10 text-primary"
-                          : "bg-muted text-muted-foreground",
-                        !locked &&
-                          (isEnabled
-                            ? "hover:bg-primary/20"
-                            : "hover:bg-muted/80"),
-                        locked && "cursor-not-allowed opacity-60",
-                      )}
-                    >
-                      {isEnabled
-                        ? t("agentPaths.enabled")
-                        : t("agentPaths.disabled")}
-                    </button>
-                    <span className="shrink-0 w-28 text-sm font-medium text-foreground">
-                      {agentDisplayName(agent)}
-                    </span>
-                    <input
-                      type="text"
-                      readOnly={editingAgent !== agent}
-                      disabled={!isEnabled}
-                      value={
-                        editingAgent === agent
-                          ? editingPath
-                          : (info?.path ?? "")
-                      }
-                      placeholder={t("agentPaths.notDetected")}
-                      aria-label={t("agentPaths.configPath", { agent })}
-                      onChange={(e) => setEditingPath(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (
-                          e.key === "Enter" &&
-                          !e.nativeEvent.isComposing &&
-                          e.keyCode !== 229 &&
-                          editingPath.trim()
-                        ) {
-                          updatePath(agent, editingPath.trim());
-                          setEditingAgent(null);
-                        }
-                        if (e.key === "Escape") setEditingAgent(null);
-                      }}
-                      className={clsx(
-                        "flex-1 rounded-md border border-border px-3 py-1 text-sm text-foreground placeholder:text-muted-foreground truncate disabled:opacity-40",
-                        editingAgent === agent
-                          ? "bg-card ring-1 ring-ring"
-                          : "bg-muted cursor-default",
-                      )}
-                    />
-                    {editingAgent === agent ? (
-                      <>
-                        {isDesktop() && (
-                          <button
-                            type="button"
-                            aria-label={t("agentPaths.browse", { agent })}
-                            className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                            onClick={async () => {
-                              const path = await openDirectoryPicker({
-                                title: t("agentPaths.selectDir", { agent }),
-                              });
-                              if (path) {
-                                updatePath(agent, path);
-                                setEditingAgent(null);
-                              }
-                            }}
-                          >
-                            <FolderSearch size={14} />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          aria-label={t("agentPaths.cancel")}
-                          className="shrink-0 rounded-md border border-border bg-background p-1.5 text-muted-foreground hover:text-foreground transition-colors"
-                          onClick={() => setEditingAgent(null)}
-                        >
-                          <X size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={t("agentPaths.save")}
-                          disabled={!editingPath.trim()}
-                          className="shrink-0 rounded-md bg-primary p-1.5 text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
-                          onClick={() => {
-                            updatePath(agent, editingPath.trim());
-                            setEditingAgent(null);
-                          }}
-                        >
-                          <Check size={14} />
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={!isEnabled}
-                        aria-label={t("agentPaths.edit", { agent })}
-                        className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:pointer-events-none disabled:opacity-40"
-                        onClick={() => {
-                          setEditingAgent(agent);
-                          setEditingPath(info?.path ?? "");
-                        }}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Project Paths */}
-          <section
-            id="project-paths"
-            className="space-y-4 border-t border-border pt-8"
-          >
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground">
-                {t("projectPaths.section")}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                {t("projectPaths.description")}
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="text"
-                placeholder={
-                  isDesktop()
-                    ? t("projectPaths.placeholderDesktop")
-                    : t("projectPaths.placeholderWeb")
-                }
-                value={projectPathInput}
-                onChange={(e) => setProjectPathInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !e.nativeEvent.isComposing &&
-                    e.keyCode !== 229 &&
-                    projectPathInput.trim()
-                  )
-                    handleAddPath(projectPathInput.trim());
-                }}
-                className="flex-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-              {isDesktop() && (
-                <button
-                  type="button"
-                  disabled={adding}
-                  onClick={handleBrowseProject}
-                  className="shrink-0 rounded-md border border-border bg-card p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40"
-                  title={t("projectPaths.browse")}
-                >
-                  <FolderSearch size={16} />
-                </button>
-              )}
-              <button
-                onClick={() => handleAddPath(projectPathInput.trim())}
-                disabled={adding || !projectPathInput.trim()}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs text-primary-foreground shadow-sm transition-[color,background-color,box-shadow] duration-200 hover:bg-primary/90 hover:shadow-md disabled:opacity-50"
-              >
-                {adding ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Plus size={12} />
-                )}
-                {t("projectPaths.add")}
-              </button>
-            </div>
-
-            {/* Discovered projects (shown when user selected a non-project root dir) */}
-            {discoveredProjects !== null && (
-              <div className="rounded-lg border border-border bg-card p-4 space-y-3 shadow-sm">
-                <p className="text-xs text-muted-foreground">
-                  {t("projectPaths.notProject", {
-                    count: discoveredProjects.length,
-                  })}
-                </p>
-                {discoveredProjects.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic">
-                    {t("projectPaths.noneFound")}
-                  </p>
-                ) : (
-                  <>
-                    <div className="space-y-1 max-h-48 overflow-y-auto overscroll-contain">
-                      {discoveredProjects.map((dp) => {
-                        const already = existingPaths.has(dp.path);
-                        return (
-                          <label
-                            key={dp.path}
-                            className={clsx(
-                              "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors",
-                              already
-                                ? "opacity-50 cursor-not-allowed"
-                                : "hover:bg-muted",
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              disabled={already}
-                              checked={discoveredSelected.has(dp.path)}
-                              onChange={() => toggleDiscovered(dp.path)}
-                              className="rounded border-border"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <span className="font-medium text-foreground">
-                                {dp.name}
-                              </span>
-                              <span className="ml-2 text-xs text-muted-foreground truncate">
-                                {dp.path}
-                              </span>
-                            </div>
-                            {already && (
-                              <span className="text-xs text-muted-foreground">
-                                {t("projectPaths.addedBadge")}
-                              </span>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => setDiscoveredProjects(null)}
-                        className="rounded-lg border border-border px-3 py-1 text-xs text-muted-foreground hover:bg-muted"
-                      >
-                        {t("projectPaths.cancel")}
-                      </button>
-                      <button
-                        onClick={handleAddDiscovered}
-                        disabled={discoveredSelected.size === 0 || adding}
-                        className="rounded-lg bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                      >
-                        {t("projectPaths.addSelected", {
-                          count: discoveredSelected.size,
-                        })}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Project list */}
-            {loading ? (
-              <p className="text-xs text-muted-foreground">
-                {tc("status.loading")}
-              </p>
-            ) : projects.length === 0 ? (
-              <div className="rounded-lg border-2 border-dashed border-border bg-muted/20 p-6">
-                <h4 className="text-sm font-medium text-foreground">
-                  {t("projectPaths.emptyTitle")}
-                </h4>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("projectPaths.emptyDescription")}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {projects.map((project) => (
-                  <div
-                    key={project.id}
-                    className={clsx(
-                      "flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-sm border bg-card shadow-sm",
-                      project.exists ? "border-border" : "border-border",
-                    )}
-                  >
-                    <FolderOpen
-                      size={14}
-                      className={clsx(
-                        "shrink-0",
-                        project.exists
-                          ? "text-muted-foreground"
-                          : "text-muted-foreground/50",
-                      )}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <span
-                        className={clsx(
-                          "font-medium",
-                          project.exists
-                            ? "text-foreground"
-                            : "text-muted-foreground line-through",
-                        )}
-                      >
-                        {project.name}
-                      </span>
-                      {!project.exists && (
-                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground inline-flex items-center gap-1">
-                          <TriangleAlert size={10} />{" "}
-                          {t("projectPaths.missing")}
-                        </span>
-                      )}
-                      <span className="ml-2 text-xs text-muted-foreground truncate">
-                        {project.path}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        removeProject(project.id);
-                        toast.success(t("projectPaths.toast.projectRemoved"));
-                      }}
-                      className="text-muted-foreground hover:text-destructive transition-colors cursor-pointer focus:outline-none"
-                      aria-label={t("projectPaths.removeAria", {
-                        name: project.name,
-                      })}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <EnvironmentManager />
           </section>
 
           {/* Appearance */}

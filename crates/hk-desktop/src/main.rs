@@ -18,6 +18,8 @@ fn main() {
     std::fs::create_dir_all(&data_dir).expect("Failed to create data dir");
     let store = Store::open(&data_dir.join("metadata.db")).expect("Failed to open database");
 
+    hk_core::environments::service::start(hk_core::home_dir(), Arc::new(adapter::all_adapters()));
+
     // NOTE: tauri.conf.json sets `macOSPrivateApi: true`. This is required for:
     // 1. Window transparency (`"transparent": true` in window config)
     // 2. Sidebar vibrancy effect (`"windowEffects": {"effects": ["sidebar"]}`)
@@ -34,6 +36,11 @@ fn main() {
             pending_clones: Default::default(),
         })
         .invoke_handler(tauri::generate_handler![
+            commands::discover_environments,
+            commands::environment_extension,
+            commands::environment_command,
+            commands::read_comparison_file,
+            commands::save_comparison_file,
             commands::list_extensions,
             commands::list_agents,
             commands::get_dashboard_stats,

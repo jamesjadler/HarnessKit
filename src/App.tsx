@@ -9,6 +9,7 @@ import { Confetti } from "./components/onboarding/confetti";
 import { Onboarding, useOnboarding } from "./components/onboarding/onboarding";
 import { ErrorBoundary } from "./components/shared/error-boundary";
 import { blendOver, cssColorToRgb, type Rgb, rgbToHex } from "./lib/css-color";
+import { mergeEnvironmentInventory } from "./lib/environment-inventory";
 import { api } from "./lib/invoke";
 import { isDesktop, isMac } from "./lib/transport";
 import AgentsPage from "./pages/agents";
@@ -16,10 +17,12 @@ import AuditPage from "./pages/audit";
 import ExtensionsPage from "./pages/extensions";
 import KitsPage from "./pages/kits";
 import MarketplacePage from "./pages/marketplace";
+import NotificationsPage from "./pages/notifications";
 import OverviewPage from "./pages/overview";
 import SettingsPage from "./pages/settings";
 import { useAgentStore } from "./stores/agent-store";
 import { useAuditStore } from "./stores/audit-store";
+import { useEnvironmentStore } from "./stores/environment-store";
 import { useExtensionStore } from "./stores/extension-store";
 import { resolveMode, useUIStore } from "./stores/ui-store";
 import { useUpdateStore } from "./stores/update-store";
@@ -93,6 +96,28 @@ export default function App() {
     } else {
       useWebUpdateStore.getState().checkForUpdate();
     }
+  }, []);
+
+  useEffect(
+    () =>
+      useEnvironmentStore.subscribe((state, previous) => {
+        if (state.data && state.data !== previous.data) {
+          useExtensionStore.setState((s) => ({
+            extensions: mergeEnvironmentInventory(s.extensions, state.data),
+          }));
+        }
+      }),
+    [],
+  );
+  useEffect(() => {
+    const refresh = () =>
+      useEnvironmentStore
+        .getState()
+        .command({ action: "overview" })
+        .catch(() => {});
+    refresh();
+    const timer = setInterval(refresh, 15000);
+    return () => clearInterval(timer);
   }, []);
 
   // Background scan + rescan on window focus
@@ -214,6 +239,7 @@ export default function App() {
         <ErrorBoundary>
           <Routes>
             <Route element={<AppShell />}>
+              <Route path="notifications" element={<NotificationsPage />} />
               <Route index element={<OverviewPage />} />
               <Route path="kits" element={<KitsPage />} />
               <Route path="agents" element={<AgentsPage />} />

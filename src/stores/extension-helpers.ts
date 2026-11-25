@@ -88,7 +88,16 @@ export function visibleAgents(
   enabledAgents: ReadonlySet<string> | null = null,
 ): string[] {
   return enabledAgents
-    ? group.agents.filter((a) => enabledAgents.has(a))
+    ? group.agents.filter(
+        (a) =>
+          enabledAgents.has(a) ||
+          group.instances.some(
+            (i) =>
+              i.environment_id &&
+              i.environment_id !== "local" &&
+              i.agents.includes(a),
+          ),
+      )
     : group.agents;
 }
 
@@ -122,7 +131,11 @@ export function groupHasEnabledAgent(
   enabledAgents: ReadonlySet<string>,
 ): boolean {
   return (
-    group.agents.length === 0 || group.agents.some((a) => enabledAgents.has(a))
+    group.agents.length === 0 ||
+    group.instances.some(
+      (i) => i.environment_id && i.environment_id !== "local",
+    ) ||
+    group.agents.some((a) => enabledAgents.has(a))
   );
 }
 
@@ -157,7 +170,7 @@ export function buildGroups(extensions: Extension[]): GroupedExtension[] {
   const map = new Map<string, Extension[]>();
   for (const ext of extensions) {
     let key = extensionGroupKey(ext);
-    if (deriveExtensionUrl(ext) == null) {
+    if (!ext.sync_skill_id && deriveExtensionUrl(ext) == null) {
       const sk = `${ext.kind}\0${logicalExtensionName(ext)}\0${scopeKey(ext.scope)}`;
       const siblings = urlSiblings.get(sk);
       if (siblings?.size === 1) {
@@ -294,10 +307,21 @@ let _cachedFiltered: GroupedExtension[] = [];
 let _cachedFilterKey = "";
 let _cachedFilterGroupsRef: GroupedExtension[] = [];
 
-export function getCachedGroups(extensions: Extension[]): GroupedExtension[] {
-  if (extensions !== _cachedExtRef) {
+let _cachedEnvironment = "all";
+export function getCachedGroups(
+  extensions: Extension[],
+  environment = "all",
+): GroupedExtension[] {
+  if (extensions !== _cachedExtRef || environment !== _cachedEnvironment) {
     _cachedExtRef = extensions;
-    _cachedGroups = buildGroups(extensions);
+    _cachedEnvironment = environment;
+    _cachedGroups = buildGroups(
+      environment === "all"
+        ? extensions
+        : extensions.filter(
+            (e) => (e.environment_id ?? "local") === environment,
+          ),
+    );
   }
   return _cachedGroups;
 }

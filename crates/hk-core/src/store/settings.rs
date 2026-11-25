@@ -11,7 +11,14 @@ impl Store {
             Ok((row.get::<_, Option<String>>(0)?, row.get::<_, bool>(1)?))
         });
         match result {
-            Ok(val) => Ok(val),
+            Ok((path, enabled)) => Ok((
+                path.map(|p| {
+                    crate::environments::paths::local(&p)
+                        .to_string_lossy()
+                        .into_owned()
+                }),
+                enabled,
+            )),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok((None, true)),
             Err(e) => Err(e.into()),
         }

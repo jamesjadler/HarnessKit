@@ -254,3 +254,22 @@ describe("extension-store installPairs", () => {
     expect(useExtensionStore.getState().extensions).toEqual([]);
   });
 });
+
+it("an environment-filtered toggle targets only that environment", async () => {
+  const { useEnvironmentStore } = await import("../environment-store");
+  const first = { ...linearMcp, id: "windows", environment_id: "windows" };
+  const second = { ...linearMcp, id: "mac", environment_id: "mac" };
+  useExtensionStore.setState({ extensions: [first, second] });
+  useEnvironmentStore.getState().setFilter("mac");
+  vi.mocked(api.toggleExtension)
+    .mockClear()
+    .mockResolvedValue({ redacted_secret_keys: [] });
+  try {
+    const group = useExtensionStore.getState().grouped()[0];
+    expect(group.instances.map((i) => i.id)).toEqual(["mac"]);
+    await useExtensionStore.getState().toggle(group.groupKey, true);
+    expect(vi.mocked(api.toggleExtension).mock.calls).toEqual([["mac", true]]);
+  } finally {
+    useEnvironmentStore.getState().setFilter("all");
+  }
+});

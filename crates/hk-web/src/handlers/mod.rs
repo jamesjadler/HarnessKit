@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod audit;
+pub mod environments;
 pub mod extensions;
 pub mod install;
 pub mod kits;

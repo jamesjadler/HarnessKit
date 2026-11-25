@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import {
+  Bell,
   Blocks,
   Bot,
   LayoutDashboard,
@@ -23,6 +24,7 @@ const mainNavItems = [
   { to: "/kits", icon: Package, labelKey: "kits" },
   { to: "/audit", icon: Shield, labelKey: "audit" },
   { to: "/marketplace", icon: ShoppingBag, labelKey: "marketplace" },
+  { to: "/notifications", icon: Bell, labelKey: "notifications" },
 ] as const;
 
 const utilityNavItems = [

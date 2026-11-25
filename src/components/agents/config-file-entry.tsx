@@ -11,8 +11,9 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { FileComparison } from "@/components/shared/file-comparison";
 import { useScrollPassthrough } from "@/hooks/use-scroll-passthrough";
 import { openDirectoryPicker, openFilePicker } from "@/lib/dialog";
 import { formatBytes } from "@/lib/format";
@@ -59,6 +60,37 @@ export function ConfigFileEntry({
   const isPreviewLoading = previewLoading.has(file.path);
   const previewError = previewErrors.get(file.path) ?? null;
 
+  const [comparing, setComparing] = useState(false);
+  const details = useAgentConfigStore((s) => s.agentDetails);
+  const comparisonSource = useMemo(
+    () => ({
+      path: file.path,
+      provider: file.agent,
+      category: file.category,
+      scope:
+        file.scope.type === "global" ? "global" : `project:${file.scope.path}`,
+    }),
+    [file.path, file.agent, file.category, file.scope],
+  );
+  const comparisonChoices = useMemo(
+    () =>
+      details
+        .flatMap((d) =>
+          d.config_files
+            .filter((f) => f.exists && !f.is_dir)
+            .map((f) => ({
+              path: f.path,
+              provider: d.name,
+              category: f.category,
+              scope:
+                f.scope.type === "global"
+                  ? "global"
+                  : `project:${f.scope.path}`,
+            })),
+        )
+        .filter((f, i, all) => all.findIndex((v) => v.path === f.path) === i),
+    [details],
+  );
   const [editing, setEditing] = useState(false);
   const [editPath, setEditPath] = useState(file.path);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -268,7 +300,22 @@ export function ConfigFileEntry({
             </div>
           )}
 
+          {comparing && (
+            <FileComparison
+              source={comparisonSource}
+              choices={comparisonChoices}
+              onClose={() => setComparing(false)}
+            />
+          )}
           <div className="flex gap-2">
+            {file.exists && !file.is_dir && (
+              <button
+                className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-accent"
+                onClick={() => setComparing((v) => !v)}
+              >
+                Compare / edit
+              </button>
+            )}
             {file.exists && (
               <>
                 {isDesktop() && (

@@ -456,3 +456,34 @@ async fn list_skill_files_missing_path_is_not_found() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn comparison_http_rejects_a_stale_save() {
+    let (state, _tmp) = test_state();
+    let file = state.home.join("config.toml");
+    std::fs::write(&file, "before").unwrap();
+    let app = hk_web::router::build_router(state);
+    let post = |endpoint: &str, body: serde_json::Value| {
+        Request::post(endpoint)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    };
+    let response = app
+        .clone()
+        .oneshot(post(
+            "/api/read_comparison_file",
+            serde_json::json!({"path":file}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let snapshot: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    std::fs::write(&file, "external edit").unwrap();
+    let response = app.oneshot(post("/api/save_comparison_file", serde_json::json!({"path":file,"expected":snapshot["revision"],"content":"stale draft"}))).await.unwrap();
+    assert!(!response.status().is_success());
+    assert_eq!(std::fs::read_to_string(file).unwrap(), "external edit");
+}

@@ -18,6 +18,11 @@ export interface InstallMeta {
 }
 
 export interface Extension {
+  environment_id?: string;
+  sync_skill_id?: string;
+  sync_member_id?: string;
+  sync_revision?: string | null;
+  sync_excluded?: boolean;
   id: string;
   kind: ExtensionKind;
   name: string;
@@ -244,6 +249,8 @@ export function normalizePack(input: string): string {
  *  and only the install record says where it came from. Mirrored by
  *  `group_key` in crates/hk-cli/src/grouping.rs. */
 export function extensionGroupKey(ext: Extension): string {
+  if (ext.sync_skill_id)
+    return `${ext.kind}\0${ext.sync_skill_id}\0${ext.sync_excluded ? "off" : "on"}\0${scopeKey(ext.scope)}`;
   const url = deriveExtensionUrl(ext);
   const developer = url ? extractDeveloper(url) : "";
   return `${ext.kind}\0${logicalExtensionName(ext)}\0${developer}\0${scopeKey(ext.scope)}`;

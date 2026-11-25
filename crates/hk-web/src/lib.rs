@@ -62,6 +62,7 @@ pub async fn serve(options: ServeOptions) -> anyhow::Result<()> {
         home,
     };
 
+    hk_core::environments::service::start(state.home.clone(), state.adapters.clone());
     let app = router::build_router(state);
     let addr: SocketAddr = format!("{}:{}", options.host, options.port).parse()?;
 

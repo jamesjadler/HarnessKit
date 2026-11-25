@@ -10,6 +10,10 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import {
+  EnvironmentIcons,
+  SyncStatus,
+} from "@/components/environments/environment-status";
 import { AgentMascot } from "@/components/shared/agent-mascot/agent-mascot";
 import { KindBadge } from "@/components/shared/kind-badge";
 import { PermissionTags } from "@/components/shared/permission-tags";
@@ -202,6 +206,11 @@ export function ExtensionTable({
           </div>
         ),
       }),
+      col.display({
+        id: "environments",
+        header: "Environments",
+        cell: (info) => <EnvironmentIcons group={info.row.original} />,
+      }),
       col.accessor("permissions", {
         header: () => t("table.headers.permissions"),
         cell: (info) => <PermissionTags permissions={info.getValue()} />,
@@ -252,6 +261,11 @@ export function ExtensionTable({
             </button>
           );
         },
+      }),
+      col.display({
+        id: "sync",
+        header: "Sync",
+        cell: (info) => <SyncStatus group={info.row.original} />,
       }),
     ],
     // selectedIds, updateStatuses accessed via getState() inside cell renderers

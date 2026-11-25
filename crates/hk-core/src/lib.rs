@@ -40,6 +40,8 @@ pub fn home_dir() -> std::path::PathBuf {
 /// exist, permission error, etc.) so non-existent paths still compare
 /// correctly against each other.
 pub fn paths_equal(a: &std::path::Path, b: &std::path::Path) -> bool {
+    let a = environments::paths::local(&a.to_string_lossy());
+    let b = environments::paths::local(&b.to_string_lossy());
     if a == b {
         return true;
     }
@@ -112,3 +114,5 @@ mod tests {
         assert!(!paths_equal(&a, &b));
     }
 }
+
+pub mod environments;

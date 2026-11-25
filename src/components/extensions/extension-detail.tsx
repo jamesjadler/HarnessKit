@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { RemoteSkillFiles } from "@/components/environments/remote-skill-files";
 import { DeleteDialog } from "@/components/extensions/delete-dialog";
 import { CliSections } from "@/components/extensions/detail-cli-sections";
 import { DetailHeader } from "@/components/extensions/detail-header";
@@ -910,12 +911,15 @@ export function ExtensionDetail() {
               )}
 
               {/* File tree with expandable per-file previews */}
-              {activeInstanceId && (
-                <SkillFileSection
-                  dirPath={instanceData.get(activeInstanceId)?.path ?? null}
-                  loading={loadingContent}
-                />
-              )}
+              {activeInstanceId &&
+                (activeInstanceId.startsWith("environment:") ? (
+                  <RemoteSkillFiles id={activeInstanceId} />
+                ) : (
+                  <SkillFileSection
+                    dirPath={instanceData.get(activeInstanceId)?.path ?? null}
+                    loading={loadingContent}
+                  />
+                ))}
             </div>
           )}
 

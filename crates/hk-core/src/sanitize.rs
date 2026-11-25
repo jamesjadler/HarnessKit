@@ -136,6 +136,9 @@ pub fn resolve_and_validate_config_path(path: &str) -> Result<String, HkError> {
     } else {
         path.to_string()
     };
+    let resolved = crate::environments::paths::local(&resolved)
+        .to_string_lossy()
+        .into_owned();
     if resolved.contains("..") {
         return Err(HkError::PathNotAllowed(
             "Config paths cannot contain '..' components".into(),

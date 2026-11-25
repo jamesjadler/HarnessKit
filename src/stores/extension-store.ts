@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { mergeEnvironmentInventory } from "@/lib/environment-inventory";
 import { parseError } from "@/lib/error-types";
 import i18n from "@/lib/i18n";
 import { type InstallPair, pendingCopyId } from "@/lib/install-plan";
@@ -13,6 +14,7 @@ import {
   type UpdateStatus,
 } from "@/lib/types";
 import { useAgentStore } from "./agent-store";
+import { useEnvironmentStore } from "./environment-store";
 import {
   enabledAgentSet,
   expandGroupKeys,
@@ -42,9 +44,22 @@ export {
  * refuses on purpose (a dsh plugin row, which names a package HarnessKit does
  * not own) is the routine case, but so is any read-only or locked path.
  */
-async function runPendingDeletes(ids: Iterable<string>): Promise<unknown> {
+async function runPendingDeletes(
+  ids: Iterable<string>,
+  extensions: Extension[],
+): Promise<unknown> {
   try {
-    await Promise.all([...ids].map((id) => api.deleteExtension(id)));
+    await Promise.all(
+      [...ids].map((id) => {
+        const e = extensions.find((e) => e.id === id);
+        return e?.sync_member_id && e.sync_revision !== undefined
+          ? api.deleteExtension(id, {
+              member: e.sync_member_id,
+              fingerprint: e.sync_revision,
+            })
+          : api.deleteExtension(id);
+      }),
+    );
     return null;
   } catch (e) {
     return e;
@@ -190,7 +205,10 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
     try {
       // Always fetch all extensions — kind/agent filtering is applied client-side
       // so that detail panels can access child extensions across all types.
-      const extensions = await api.listExtensions(undefined, undefined);
+      const extensions = mergeEnvironmentInventory(
+        await api.listExtensions(undefined, undefined),
+        useEnvironmentStore.getState().data,
+      );
       set({ extensions, loading: false, hasFetched: true });
       get().fetchTags();
       get().fetchPacks();
@@ -459,7 +477,7 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
     if (!pending) return;
     clearTimeout(pending.timer);
     set({ pendingDelete: null });
-    const failure = await runPendingDeletes(pending.ids);
+    const failure = await runPendingDeletes(pending.ids, pending.extensions);
     if (failure) {
       set((s) => ({ extensions: [...s.extensions, ...pending.extensions] }));
       toast.error(
@@ -661,7 +679,7 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
     const prev = get().pendingDelete;
     if (prev) {
       clearTimeout(prev.timer);
-      const failure = await runPendingDeletes(prev.ids);
+      const failure = await runPendingDeletes(prev.ids, prev.extensions);
       if (failure) {
         // Same contract as confirmDelete: the earlier rows were removed
         // optimistically too, so a refusal has to put them back.
@@ -686,7 +704,10 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
   },
 
   grouped() {
-    return getCachedGroups(get().extensions);
+    return getCachedGroups(
+      get().extensions,
+      useEnvironmentStore.getState().filter,
+    );
   },
 
   filtered() {

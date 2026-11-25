@@ -1,3 +1,5 @@
+pub mod environments;
+pub use environments::*;
 pub mod agents;
 pub mod audit;
 pub mod extensions;

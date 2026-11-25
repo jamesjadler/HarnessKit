@@ -2,12 +2,14 @@ import { ArrowDownCircle, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { EnvironmentSelector } from "@/components/environments/environment-status";
 import { BulkInstallDialog } from "@/components/extensions/bulk-install-dialog";
 import { ExtensionDetail } from "@/components/extensions/extension-detail";
 import { ExtensionFilters } from "@/components/extensions/extension-filters";
 import { ExtensionTable } from "@/components/extensions/extension-table";
 import { useScope } from "@/hooks/use-scope";
 import { useAgentStore } from "@/stores/agent-store";
+import { useEnvironmentStore } from "@/stores/environment-store";
 import { inScope } from "@/stores/extension-helpers";
 import { useExtensionStore } from "@/stores/extension-store";
 import { useProjectStore } from "@/stores/project-store";
@@ -136,7 +138,24 @@ export default function ExtensionsPage() {
       ),
     ).length;
   }, [updateStatuses, grouped]);
-  const data = useExtensionStore((s) => s.filtered());
+  const filtered = useExtensionStore((s) => s.filtered());
+  const environmentFilter = useEnvironmentStore((s) => s.filter);
+  const data = useMemo(
+    () =>
+      environmentFilter === "all"
+        ? filtered
+        : filtered.filter((g) =>
+            g.instances.some(
+              (i) => (i.environment_id ?? "local") === environmentFilter,
+            ),
+          ),
+    [filtered, environmentFilter],
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changing environment clears selections from the previous environment.
+  useEffect(() => {
+    setSelectedId(null);
+    clearSelection();
+  }, [environmentFilter, setSelectedId, clearSelection]);
   // Over every group, not the filtered view: a row selected before a filter
   // hid it is still selected (batch enable/disable reads the same set).
   // `grouped()` is cached by reference, so this follows the store.
@@ -182,6 +201,7 @@ export default function ExtensionsPage() {
             <h2 className="text-2xl font-bold tracking-tight select-none">
               {t("page.title")}
             </h2>
+            <EnvironmentSelector />
             <button
               onClick={() => navigate("/marketplace")}
               className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-[background-color,box-shadow] duration-200 hover:bg-accent hover:shadow-md"

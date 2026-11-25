@@ -47,6 +47,7 @@ import {
   sortAgents,
 } from "@/lib/types";
 import { useAgentStore } from "@/stores/agent-store";
+import { useEnvironmentStore } from "@/stores/environment-store";
 import { useExtensionStore } from "@/stores/extension-store";
 import { useMarketplaceStore } from "@/stores/marketplace-store";
 import { useRepositoryStore } from "@/stores/repository-store";
@@ -235,6 +236,10 @@ const TYPE_TABS = [
 ] as const;
 
 export default function MarketplacePage() {
+  const [targetEnvironment, setTargetEnvironment] = useState("local");
+  const environmentData = useEnvironmentStore((s) => s.data);
+  const environmentBusy = useEnvironmentStore((s) => s.busy);
+
   const { t } = useTranslation("marketplace");
   const { t: tc } = useTranslation("common");
   const {
@@ -317,15 +322,16 @@ export default function MarketplacePage() {
     const targetKey =
       activeScope.type === "all" ? null : scopeKey(activeScope as ConfigScope);
 
-    if (targetKey !== null) {
+    if (targetEnvironment === "local" && targetKey !== null) {
       if (installed.has(`${item.id}:${agentName}:${targetKey}`)) return true;
-    } else {
+    } else if (targetEnvironment === "local") {
       for (const k of installed) {
         if (k.startsWith(`${item.id}:${agentName}:`)) return true;
       }
     }
 
     return extensions.some((ext) => {
+      if ((ext.environment_id ?? "local") !== targetEnvironment) return false;
       if (!ext.agents.includes(agentName)) return false;
 
       if (item.kind === "skill") {
@@ -407,6 +413,104 @@ export default function MarketplacePage() {
     targetScope: ConfigScope,
     hermesCategory?: string,
   ) => {
+    if (targetEnvironment === "all") {
+      setError(null);
+      const scopeId =
+        targetScope.type === "global" ? "global" : targetScope.path;
+      const targets =
+        environmentData?.registry.environments.flatMap((env) =>
+          env.providers
+            .filter(
+              (p) =>
+                p.name === targetAgent && (p.scope ?? "global") === scopeId,
+            )
+            .map((p) => ({
+              environment: env.id,
+              provider: p.id,
+              name: env.name,
+            })),
+        ) ?? [];
+      if (!targets.length) {
+        setError("No mapped destinations for this provider and scope.");
+        return;
+      }
+      try {
+        let source = item.source,
+          skill_id = item.skill_id;
+        if (!skill_id) {
+          const matches = await api.searchMarketplace(item.name, "skill", 5);
+          const match = matches.find(
+            (m) => m.source === source && m.name === item.name,
+          );
+          if (!match)
+            throw new Error(
+              "Search for this skill directly before installing.",
+            );
+          source = match.source;
+          skill_id = match.skill_id;
+        }
+        for (const target of targets)
+          await useEnvironmentStore.getState().command({
+            action: "install",
+            environment: target.environment,
+            provider: target.provider,
+            source,
+            skill_id,
+          });
+        toast.success(
+          `Prepared installs for ${targets.length} destinations. Review delivery in Notifications.`,
+        );
+      } catch (error) {
+        setError(`Some destinations may already be queued. ${String(error)}`);
+      }
+      return;
+    }
+    if (targetEnvironment !== "local") {
+      setError(null);
+      try {
+        const env = environmentData?.registry.environments.find(
+          (e) => e.id === targetEnvironment,
+        );
+        const target = env?.providers.find(
+          (p) =>
+            p.name === targetAgent &&
+            (p.scope ?? "global") ===
+              (targetScope.type === "global" ? "global" : targetScope.path),
+        );
+        if (!target)
+          throw new Error(
+            "Map this project/provider directory in Settings before installing.",
+          );
+        let source = item.source,
+          skill_id = item.skill_id;
+        if (!skill_id) {
+          const matches = await api.searchMarketplace(item.name, "skill", 5);
+          const match = matches.find(
+            (m) => m.source === source && m.name === item.name,
+          );
+          if (!match)
+            throw new Error(
+              "Search for this skill directly before installing.",
+            );
+          source = match.source;
+          skill_id = match.skill_id;
+        }
+        await useEnvironmentStore.getState().command({
+          action: "install",
+          environment: targetEnvironment,
+          provider: target.id,
+          source,
+          skill_id,
+        });
+        toast.success(
+          "Install prepared. Check Notifications for delivery status.",
+        );
+      } catch (error) {
+        setError(String(error));
+        toast.error(t("toast.installationFailed"));
+      }
+      return;
+    }
     // For Hermes skill installs, show category picker first (unless category already provided)
     if (targetAgent === "hermes" && item.kind === "skill" && !hermesCategory) {
       const cats = await api.listHermesCategories().catch(() => []);
@@ -451,7 +555,15 @@ export default function MarketplacePage() {
   };
 
   const detectedAgents = sortAgents(
-    agents.filter((a) => a.detected && a.enabled),
+    agents.filter((a) =>
+      targetEnvironment === "local"
+        ? a.detected && a.enabled
+        : environmentData?.registry.environments.some(
+            (e) =>
+              (targetEnvironment === "all" || e.id === targetEnvironment) &&
+              e.providers.some((p) => p.name === a.name),
+          ),
+    ),
     agentOrder,
   );
   const displayItems = query.length >= 2 ? results : trending;
@@ -811,12 +923,28 @@ export default function MarketplacePage() {
             )}
 
             {/* Install to agents */}
-            {detectedAgents.length > 0 && selectedItem.kind === "skill" && (
+            {selectedItem.kind === "skill" && (
               <div className="mt-4">
                 <div className="mb-2 flex items-center gap-2 border-b border-border pb-1">
                   <h4 className="text-xs font-medium text-muted-foreground">
                     {t("detail.installToAgent")}
                   </h4>
+                  <select
+                    aria-label="Install environment"
+                    value={targetEnvironment}
+                    onChange={(e) => setTargetEnvironment(e.target.value)}
+                    className="max-w-48 rounded border border-border bg-background p-1 text-xs"
+                  >
+                    <option value="local">Local environment</option>
+                    <option value="all">All environments</option>
+                    {environmentData?.registry.environments
+                      .filter((e) => e.id !== "local")
+                      .map((e) => (
+                        <option value={e.id} key={e.id}>
+                          {e.machine} / {e.name}
+                        </option>
+                      ))}
+                  </select>
                   {/* Single-scope mode: render the inline "· 📁 name" hint
                    * next to the header to save vertical space. All-scopes
                    * mode renders the picker on its own row below since the
@@ -836,6 +964,36 @@ export default function MarketplacePage() {
                     />
                   </div>
                 )}
+                {targetEnvironment === "all" && (
+                  <div className="mb-2 rounded border border-border p-2 text-xs">
+                    <b>Install destinations</b>
+                    {environmentData?.registry.environments.map((env) => (
+                      <p key={env.id}>
+                        {env.machine} / {env.name}:{" "}
+                        {env.providers
+                          .filter(
+                            (p) =>
+                              (p.scope ?? "global") ===
+                              (effectiveTarget?.type === "project"
+                                ? effectiveTarget.path
+                                : "global"),
+                          )
+                          .map(
+                            (p) =>
+                              `${p.name}${p.paused || env.paused ? " (paused; queued)" : ""}`,
+                          )
+                          .join(", ") || "No mapping for this scope"}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Sync policy:{" "}
+                  {environmentData?.registry.preferences.policy ?? "all"}.{" "}
+                  {environmentData?.registry.preferences.policy === "none"
+                    ? "Only selected destinations are affected."
+                    : "The skill can also propagate to other participating destinations and newly connected environments under this policy."}
+                </p>
                 <div className="flex flex-wrap gap-1.5" aria-live="polite">
                   {detectedAgents.map((agent) => {
                     const key = `${selectedItem.id}:${agent.name}`;
@@ -859,6 +1017,7 @@ export default function MarketplacePage() {
                     const isInstallingAny =
                       installing?.startsWith(`${selectedItem.id}:`) ?? false;
                     const disabled =
+                      environmentBusy ||
                       !effectiveTarget ||
                       isInstallingAny ||
                       isInstalled ||

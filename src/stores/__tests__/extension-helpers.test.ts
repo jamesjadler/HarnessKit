@@ -817,3 +817,50 @@ describe("extensionRowLink", () => {
     );
   });
 });
+
+describe("environment sync partitions", () => {
+  it("keeps intentional exclusions in a separate row even with the same source", () => {
+    const a = {
+      ...baseExt,
+      id: "a",
+      environment_id: "windows",
+      sync_skill_id: "shared",
+      sync_member_id: "a",
+      sync_excluded: false,
+    };
+    const b = {
+      ...baseExt,
+      id: "b",
+      environment_id: "mac",
+      sync_skill_id: "shared",
+      sync_member_id: "b",
+      sync_excluded: true,
+      source: { ...baseExt.source, url: null },
+    };
+    const groups = buildGroups([a, b]);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.instances.map((i) => i.environment_id))).toEqual(
+      [["windows"], ["mac"]],
+    );
+  });
+  it("groups participating environments while preserving original permissions", () => {
+    const a = {
+      ...baseExt,
+      id: "a",
+      sync_skill_id: "shared",
+      permissions: [{ type: "filesystem" as const, paths: ["/docs"] }],
+    };
+    const b = {
+      ...baseExt,
+      id: "b",
+      sync_skill_id: "shared",
+      agents: ["codex"],
+      source: { ...baseExt.source, url: null },
+      permissions: [{ type: "network" as const, domains: ["example.com"] }],
+    };
+    const [group] = buildGroups([a, b]);
+    expect(group.instances).toHaveLength(2);
+    expect(group.permissions).toHaveLength(2);
+    expect(group.agents).toEqual(expect.arrayContaining(["claude", "codex"]));
+  });
+});

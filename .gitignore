@@ -5,7 +5,14 @@
 *.swp
 *.swo
 .DS_Store
-docs/
+docs/*
+!docs/adr/
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/plans/
+docs/superpowers/plans/*
+!docs/superpowers/plans/2026-11-24-multi-environment.md
+!docs/superpowers/plans/implementation-progress.md
 .superpowers/
 .claude/
 .worktrees/
@@ -15,3 +22,8 @@ branding/
 output/
 crates/hk-desktop/gen/
 .codebase-memory/
+
+# Track approved implementation plans.
+!docs/superpowers/plans/2026-11-24-quiet-tree.md
+!docs/superpowers/plans/2026-11-24-editable-merge.md
+!docs/superpowers/plans/2026-11-24-managed-files.md

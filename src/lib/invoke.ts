@@ -39,6 +39,51 @@ function validateNonEmpty(value: string, label: string): void {
   }
 }
 
+async function environmentAction<T>(
+  id: string,
+  action: string,
+  enabled?: boolean,
+  expected?: string | null,
+): Promise<T> {
+  const { useEnvironmentStore } = await import("@/stores/environment-store");
+  const state = useEnvironmentStore.getState();
+  const member = id.slice("environment:".length);
+  const copy = state.data?.registry.skills
+    .flatMap((s) => s.members)
+    .find((m) => m.id === member);
+  if (!copy) throw new Error("Environment inventory changed; refresh first");
+  const result = await transport<T>("environment_extension", {
+    member,
+    action,
+    expected: expected === undefined ? copy.fingerprint : expected,
+    enabled: enabled ?? null,
+  });
+  if (action !== "content") await state.command({ action: "overview" });
+  return result;
+}
+
+async function trackedAction<T>(
+  id: string,
+  action: string,
+  fallback: () => Promise<T>,
+  enabled?: boolean,
+): Promise<T> {
+  if (id.startsWith("environment:"))
+    return environmentAction(id, action, enabled);
+  const { useExtensionStore } = await import("@/stores/extension-store");
+  const extension = useExtensionStore
+    .getState()
+    .extensions.find((e) => e.id === id);
+  return extension?.sync_member_id
+    ? environmentAction(
+        `environment:${extension.sync_member_id}`,
+        action,
+        enabled,
+        extension.sync_revision,
+      )
+    : fallback();
+}
+
 export const api = {
   listExtensions(kind?: string, agent?: string): Promise<Extension[]> {
     return transport("list_extensions", { kind, agent });
@@ -54,7 +99,12 @@ export const api = {
 
   toggleExtension(id: string, enabled: boolean): Promise<ToggleOutcome> {
     validateNonEmpty(id, "Extension ID");
-    return transport("toggle_extension", { id, enabled });
+    return trackedAction(
+      id,
+      "toggle",
+      () => transport("toggle_extension", { id, enabled }),
+      enabled,
+    );
   },
 
   listAuditResults(): Promise<AuditResult[]> {
@@ -69,9 +119,21 @@ export const api = {
     return transport("scan_and_sync");
   },
 
-  deleteExtension(id: string): Promise<void> {
+  deleteExtension(
+    id: string,
+    observed?: { member: string; fingerprint: string | null },
+  ): Promise<void> {
+    if (observed)
+      return environmentAction(
+        `environment:${observed.member}`,
+        "delete",
+        undefined,
+        observed.fingerprint,
+      );
     validateNonEmpty(id, "Extension ID");
-    return transport("delete_extension", { id });
+    return trackedAction(id, "delete", () =>
+      transport("delete_extension", { id }),
+    );
   },
 
   uninstallCliBinary(binaryPath: string): Promise<void> {
@@ -79,7 +141,9 @@ export const api = {
   },
 
   getExtensionContent(id: string): Promise<ExtensionContent> {
-    return transport("get_extension_content", { id });
+    return trackedAction(id, "content", () =>
+      transport("get_extension_content", { id }),
+    );
   },
 
   getCachedUpdateStatuses(): Promise<[string, UpdateStatus][]> {

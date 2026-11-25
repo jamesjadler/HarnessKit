@@ -70,6 +70,27 @@ impl From<HkError> for ApiError {
 
 pub fn build_router(state: WebState) -> Router {
     let api = Router::new()
+        .route(
+            "/api/read_comparison_file",
+            post(handlers::environments::read_comparison_file),
+        )
+        .route(
+            "/api/save_comparison_file",
+            post(handlers::environments::save_comparison_file),
+        )
+        .route(
+            "/api/environment_extension",
+            post(handlers::environments::environment_extension),
+        )
+        .route(
+            "/api/environment_command",
+            post(handlers::environments::environment_command)
+                .layer(axum::extract::DefaultBodyLimit::max(128 * 1024 * 1024)),
+        )
+        .route(
+            "/api/discover_environments",
+            post(handlers::environments::discover_environments),
+        )
         // Health
         .route("/api/health", get(health))
         // Node identity (web mode multi-node distinction)
