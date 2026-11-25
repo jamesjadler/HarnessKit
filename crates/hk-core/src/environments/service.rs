@@ -237,6 +237,14 @@ pub fn execute(
     req: Request,
 ) -> Result<Overview, HkError> {
     let coordinator = Coordinator::new(home.join(".harnesskit/environments"));
+    // UI polling reads the existing catalog. Discovery/reconciliation is handled
+    // by initialization, explicit refreshes, mutations, and the background tick.
+    if matches!(&req, Request::Overview) {
+        let view = coordinator.overview()?;
+        if view.registry.environments.iter().any(|env| env.id == "local") {
+            return Ok(view);
+        }
+    }
     coordinator.transaction(|r| {
         r.path_homes
             .insert("local".into(), home.to_string_lossy().into_owned());
@@ -1076,6 +1084,25 @@ fn rename_environment(
 #[cfg(test)]
 mod connection_edit_tests {
     use super::*;
+    #[test]
+    fn overview_poll_does_not_repeat_discovery() {
+        let tmp = tempfile::tempdir().unwrap();
+        let c = Coordinator::new(tmp.path().join(".harnesskit/environments"));
+        c.transaction(|r| {
+            r.environments.push(Environment {
+                id: "local".into(), machine: "test".into(), name: "test".into(),
+                os: "linux".into(), paused: false, providers: vec![],
+                connection: Connection::Local,
+            });
+            Ok(())
+        }).unwrap();
+        let generation = c.overview().unwrap().registry.generation;
+        let store = Store::open(&tmp.path().join("metadata.db")).unwrap();
+        let view = execute(tmp.path(), &[], &store, Request::Overview).unwrap();
+        assert_eq!(view.registry.generation, generation);
+        assert!(view.registry.path_homes.is_empty());
+    }
+
     #[test]
     fn rename_preserves_environment_identity_and_connection() {
         let tmp = tempfile::tempdir().unwrap();

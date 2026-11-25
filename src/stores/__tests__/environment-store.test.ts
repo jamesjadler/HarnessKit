@@ -35,9 +35,22 @@ it("continues the queue after a failed request", async () => {
     .getState()
     .command({ action: "refresh" })
     .catch((e) => e);
-  const second = useEnvironmentStore.getState().command({ action: "overview" });
+  const second = useEnvironmentStore.getState().command({ action: "pause" });
   expect(await first).toBeInstanceOf(Error);
   await second;
   expect(useEnvironmentStore.getState().data?.registry.generation).toBe(3);
   expect(useEnvironmentStore.getState().error).toBe(null);
+});
+
+it("keeps polling non-blocking and drops overlapping overview requests", async () => {
+  let release!: (value: unknown) => void;
+  vi.mocked(transport).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+  const first = useEnvironmentStore.getState().command({ action: "overview" });
+  await vi.waitFor(() => expect(transport).toHaveBeenCalledTimes(1));
+  expect(useEnvironmentStore.getState().busy).toBe(false);
+  await useEnvironmentStore.getState().command({ action: "overview" });
+  expect(transport).toHaveBeenCalledTimes(1);
+  release({ registry: { generation: 4 } });
+  await first;
+  expect(useEnvironmentStore.getState().busy).toBe(false);
 });

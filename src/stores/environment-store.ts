@@ -20,8 +20,11 @@ export const useEnvironmentStore = create<State>((set) => {
     filter: "all",
     setFilter: (filter) => set({ filter }),
     command(req) {
+      const background = req.action === "overview";
+      // Polls are disposable; never accumulate them behind slow operations.
+      if (background && pending > 0) return Promise.resolve();
       pending += 1;
-      set({ busy: true });
+      if (!background) set({ busy: true });
       const job = queue.then(async () => {
         set({ error: null });
         try {
@@ -37,7 +40,7 @@ export const useEnvironmentStore = create<State>((set) => {
           throw error;
         } finally {
           pending -= 1;
-          set({ busy: pending > 0 });
+          if (pending === 0) set({ busy: false });
         }
       });
       queue = job.catch(() => {});
