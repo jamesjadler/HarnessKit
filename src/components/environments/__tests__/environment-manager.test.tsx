@@ -31,6 +31,9 @@ it("uses a discovered address and leaves SSH overrides optional", async () => {
   fireEvent.click(
     await screen.findByRole("button", { name: /MacBook.*Set up connection/ }),
   );
+  fireEvent.change(screen.getByLabelText("Authentication"), {
+    target: { value: "key" },
+  });
   expect(screen.getByLabelText("Host")).toHaveValue("mac.ts.net");
   expect(screen.getByLabelText("SSH user")).not.toBeRequired();
   expect(screen.getByLabelText("SSH port")).not.toBeRequired();
@@ -53,12 +56,16 @@ it("retains entered values and displays actionable guidance after failure", asyn
   fireEvent.change(screen.getByLabelText("Host"), {
     target: { value: "my-mac" },
   });
+  fireEvent.change(screen.getByLabelText("SSH user"), {
+    target: { value: "demonlord" },
+  });
+  fireEvent.change(screen.getByLabelText("Password"), {
+    target: { value: "sample-only" },
+  });
   fireEvent.click(
     screen.getByRole("button", { name: "Test connection and add" }),
   );
-  expect(
-    await screen.findByText("SSH service is not accepting connections"),
-  ).toBeInTheDocument();
+  expect(await screen.findByText("Connection refused")).toBeInTheDocument();
   expect(screen.getByLabelText("Host")).toHaveValue("my-mac");
 });
 it("connects a selected Docker container using its context without SSH fields", async () => {
@@ -205,5 +212,93 @@ it("opening and canceling the picker does not flush an unsaved draft", async () 
   );
   expect(command).not.toHaveBeenCalledWith(
     expect.objectContaining({ action: "catalog_path" }),
+  );
+});
+
+it("defaults to credentials, confirms fingerprint, and clears password after connection", async () => {
+  command.mockRejectedValueOnce(
+    new Error("Confirm SSH host fingerprint: SHA256:sample"),
+  );
+  render(<EnvironmentManager />);
+  fireEvent.click(screen.getByRole("button", { name: "Add environment" }));
+  expect(screen.getByLabelText("Authentication")).toHaveValue("password");
+  fireEvent.change(screen.getByLabelText("Host"), {
+    target: { value: "mac.ts.net" },
+  });
+  fireEvent.change(screen.getByLabelText("SSH user"), {
+    target: { value: "demonlord" },
+  });
+  fireEvent.change(screen.getByLabelText("Password"), {
+    target: { value: "sample-only" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Test connection and add" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Trust this fingerprint" }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Test connection and add" }),
+  );
+  await waitFor(() =>
+    expect(command).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        action: "connect_password",
+        host: "mac.ts.net",
+        user: "demonlord",
+        password: "sample-only",
+        port: 22,
+        host_key: "SHA256:sample",
+      }),
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Add environment" }));
+  expect(screen.getByLabelText("Password")).toHaveValue("");
+});
+it("renames an environment without replacing its identity", async () => {
+  useEnvironmentStore.setState({
+    data: {
+      registry: {
+        version: 1,
+        generation: 0,
+        environments: [
+          {
+            id: "local",
+            machine: "Desktop",
+            name: "Ubuntu",
+            os: "linux",
+            paused: false,
+            providers: [],
+          },
+        ],
+        skills: [],
+        preferences: {
+          automatic: false,
+          policy: "all",
+          direction: "bidirectional",
+          host: null,
+          removal: "ask",
+        },
+      },
+      statuses: [],
+    },
+  });
+  render(<EnvironmentManager />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Rename Ubuntu", hidden: true }),
+  );
+  fireEvent.change(screen.getByLabelText("Environment name"), {
+    target: { value: "Development" },
+  });
+  fireEvent.submit(screen.getByLabelText("Environment name").closest("form")!);
+  await waitFor(() =>
+    expect(command).toHaveBeenCalledWith({
+      action: "rename",
+      environment: "local",
+      name: "Development",
+    }),
   );
 });

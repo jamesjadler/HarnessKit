@@ -1,4 +1,5 @@
 //! Coordinator-owned snapshots and optimistic file writes shared by web and desktop.
+pub mod ssh_credentials;
 use crate::HkError;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

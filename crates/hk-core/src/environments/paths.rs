@@ -56,9 +56,9 @@ pub fn for_connection(path: &str, connection: &super::transport::Connection) -> 
     match connection {
         super::transport::Connection::Local => local(path).to_string_lossy().into_owned(),
         super::transport::Connection::Wsl { .. } => spelling(path, Runtime::Wsl),
-        super::transport::Connection::Ssh { .. } | super::transport::Connection::Docker { .. } => {
-            path.into()
-        }
+        super::transport::Connection::SshPassword { .. }
+        | super::transport::Connection::Ssh { .. }
+        | super::transport::Connection::Docker { .. } => path.into(),
     }
 }
 #[cfg(test)]

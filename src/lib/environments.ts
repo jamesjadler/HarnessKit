@@ -43,7 +43,7 @@ export interface EnvironmentProvider {
 }
 export interface ManagedEnvironment {
   connection?: {
-    type: "local" | "ssh" | "wsl" | "docker";
+    type: "local" | "ssh" | "ssh_password" | "wsl" | "docker";
     container?: string;
     context?: string | null;
     host?: string;

@@ -1,5 +1,5 @@
-import { ChevronRight, Laptop, Monitor, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { ChevronRight, Laptop, Monitor, Pencil, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
 import { transport } from "@/lib/transport";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useProjectStore } from "@/stores/project-store";
@@ -43,6 +43,18 @@ export function EnvironmentManager({
     [candidates, setCandidates] = useState<
       { name: string; status: string; connection: Record<string, unknown> }[]
     >([]);
+  const [authentication, setAuthentication] = useState("password");
+  const [password, setPassword] = useState("");
+  const [hostKey, setHostKey] = useState("");
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const passwordSsh =
+    ["ssh", "tailscale", "ssh-vm"].includes(kind) &&
+    authentication === "password";
+  useEffect(() => {
+    setHostKey("");
+    setConnectionError(null);
+  }, [host, port, user, kind, authentication]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [discovered, setDiscovered] = useState(false);
   const run = (req: Record<string, unknown>) => command(req).catch(() => {});
@@ -127,6 +139,23 @@ export function EnvironmentManager({
                   <summary>
                     <ChevronRight className="quiet-chevron" />
                     <span className="font-semibold">{env.name}</span>
+                    <button
+                      type="button"
+                      aria-label={`Rename ${env.name}`}
+                      title="Rename environment"
+                      disabled={busy}
+                      className="p-1 text-muted-foreground hover:text-primary"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setRenameId(env.id);
+                        setRenameName(env.name);
+                        const details = e.currentTarget.closest("details");
+                        if (details) details.open = true;
+                      }}
+                    >
+                      <Pencil size={13} />
+                    </button>
                     <span
                       className={`ml-auto text-xs ${environmentHealth(env, data?.registry.catalog, data?.registry.projects).issues ? "text-yellow-500" : "text-[var(--trust-safe)]"}`}
                     >
@@ -165,6 +194,47 @@ export function EnvironmentManager({
                     </span>
                   </summary>
                   <div className="quiet-environment-children">
+                    {renameId === env.id && (
+                      <form
+                        className="mb-3 flex gap-2 items-end"
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          try {
+                            await command({
+                              action: "rename",
+                              environment: env.id,
+                              name: renameName.trim(),
+                            });
+                            setRenameId(null);
+                          } catch {}
+                        }}
+                      >
+                        <label className="flex-1 text-xs">
+                          Environment name
+                          <input
+                            autoFocus
+                            required
+                            maxLength={120}
+                            className="mt-1 block w-full rounded border border-border bg-background p-2"
+                            value={renameName}
+                            onChange={(e) => setRenameName(e.target.value)}
+                          />
+                        </label>
+                        <button
+                          className={button}
+                          disabled={busy || !renameName.trim()}
+                        >
+                          Save name
+                        </button>
+                        <button
+                          type="button"
+                          className={button}
+                          onClick={() => setRenameId(null)}
+                        >
+                          Cancel
+                        </button>
+                      </form>
+                    )}
                     {env.providers.length === 0 && (
                       <EnvironmentConnectionHelp
                         environment={env}
@@ -225,7 +295,15 @@ export function EnvironmentManager({
         >
           Discover environments
         </button>
-        <button className={button} onClick={() => setAdding((v) => !v)}>
+        <button
+          className={button}
+          onClick={() => {
+            setAdding((v) => !v);
+            setPassword("");
+            setHostKey("");
+            setConnectionError(null);
+          }}
+        >
           Add environment
         </button>
       </div>
@@ -284,6 +362,8 @@ export function EnvironmentManager({
                 setConnectionError(null);
                 setUser(String(c.connection.user ?? ""));
                 setPort("");
+                setPassword("");
+                setHostKey("");
                 setMachine(c.name);
                 setName(c.name);
                 setHost(String(c.connection.host ?? ""));
@@ -312,41 +392,64 @@ export function EnvironmentManager({
             e.preventDefault();
             setConnectionError(null);
             try {
+              if (
+                passwordSsh &&
+                !window.isSecureContext &&
+                !["localhost", "127.0.0.1", "::1", "[::1]"].includes(
+                  window.location.hostname,
+                )
+              )
+                throw new Error(
+                  "Open HarnessKit over HTTPS or localhost before entering a password.",
+                );
               await command(
-                kind === "local"
+                passwordSsh
                   ? {
-                      action: "add",
-                      machine,
-                      name,
-                      os: "linux",
-                      provider,
-                      root,
+                      action: "connect_password",
+                      machine: machine.trim() || host.trim(),
+                      name: name.trim() || host.trim(),
+                      host: host.trim(),
+                      user: user.trim(),
+                      port: Number(port) || 22,
+                      password,
+                      host_key: hostKey,
                     }
-                  : {
-                      action: "connect",
-                      machine:
-                        machine.trim() ||
-                        host.trim() ||
-                        name.trim() ||
-                        container.trim(),
-                      name: name.trim() || host.trim() || container.trim(),
-                      connection:
-                        kind === "docker"
-                          ? {
-                              type: "docker",
-                              container: container.trim(),
-                              context: dockerContext.trim() || null,
-                            }
-                          : kind === "wsl"
-                            ? { type: "wsl", distribution: name }
-                            : {
-                                type: "ssh",
-                                host: host.trim(),
-                                user: user.trim(),
-                                port: Number(port),
-                              },
-                    },
+                  : kind === "local"
+                    ? {
+                        action: "add",
+                        machine,
+                        name,
+                        os: "linux",
+                        provider,
+                        root,
+                      }
+                    : {
+                        action: "connect",
+                        machine:
+                          machine.trim() ||
+                          host.trim() ||
+                          name.trim() ||
+                          container.trim(),
+                        name: name.trim() || host.trim() || container.trim(),
+                        connection:
+                          kind === "docker"
+                            ? {
+                                type: "docker",
+                                container: container.trim(),
+                                context: dockerContext.trim() || null,
+                              }
+                            : kind === "wsl"
+                              ? { type: "wsl", distribution: name }
+                              : {
+                                  type: "ssh",
+                                  host: host.trim(),
+                                  user: user.trim(),
+                                  port: Number(port),
+                                },
+                      },
               );
+              setPassword("");
+              setHostKey("");
               setAdding(false);
             } catch (e) {
               setConnectionError(e instanceof Error ? e.message : String(e));
@@ -374,6 +477,23 @@ export function EnvironmentManager({
               </option>
             </select>
           </label>
+          {["ssh", "tailscale", "ssh-vm"].includes(kind) && (
+            <label className="block text-xs">
+              Authentication
+              <select
+                aria-label="Authentication"
+                className="mt-1 block w-full rounded border border-border bg-background p-2"
+                value={authentication}
+                onChange={(e) => {
+                  setAuthentication(e.target.value);
+                  setPassword("");
+                }}
+              >
+                <option value="password">Username and password</option>
+                <option value="key">SSH key / agent / existing alias</option>
+              </select>
+            </label>
+          )}
           {[
             [machine, setMachine, "Machine"],
             [
@@ -405,14 +525,19 @@ export function EnvironmentManager({
                 required={
                   kind === "local" ||
                   (kind === "wsl" && label === "WSL distribution") ||
+                  (passwordSsh && label === "SSH user") ||
                   label === "Host" ||
                   label === "Container"
                 }
                 placeholder={
                   label === "SSH user"
-                    ? "Use SSH configuration"
+                    ? passwordSsh
+                      ? "e.g. demonlord"
+                      : "Use SSH configuration"
                     : label === "SSH port"
-                      ? "Use SSH configuration (default 22)"
+                      ? passwordSsh
+                        ? "22"
+                        : "Use SSH configuration (default 22)"
                       : ["ssh", "tailscale", "ssh-vm"].includes(kind) &&
                           ["Machine", "Environment"].includes(String(label))
                         ? "Use hostname"
@@ -429,11 +554,88 @@ export function EnvironmentManager({
               />
             </label>
           ))}
-          <ConnectionGuide
-            kind={(kind === "ssh-vm" ? "ssh" : kind) as ConnectionKind}
-            context="New connection"
-            error={connectionError}
-          />
+          {passwordSsh && (
+            <div className="space-y-3 rounded-lg border border-primary/25 bg-primary/5 p-3">
+              <label className="block text-xs">
+                Password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  maxLength={4096}
+                  className="mt-1 block w-full rounded border border-border bg-background p-2"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Saved securely on the machine running HarnessKit for automatic
+                reconnection. Uses macOS Keychain, Windows Credential Manager,
+                or the Linux keyring. In WSL, Windows protects the saved
+                credential. Passwords are never stored in environment settings.
+              </p>
+              <h4 className="text-sm font-semibold">Before connecting</h4>
+              <ol className="list-decimal pl-4 text-xs space-y-1">
+                <li>
+                  On a Mac, enable System Settings → General → Sharing → Remote
+                  Login and allow this user. On Linux, enable its SSH server.
+                </li>
+                <li>
+                  Use the device’s IP or hostname. For Tailscale, connect both
+                  devices to the same tailnet and use its Tailscale address.
+                </li>
+                <li>
+                  Keep the device awake and ensure Python 3 is installed. Enter
+                  its login username and password here.
+                </li>
+              </ol>
+            </div>
+          )}
+          {passwordSsh && connectionError && (
+            <div
+              role="alert"
+              className="rounded border border-warning/40 bg-warning/5 p-3 text-xs"
+            >
+              {connectionError.includes("Confirm SSH host fingerprint:") ? (
+                <>
+                  <b>Confirm this device’s SSH identity</b>
+                  <p className="my-2 break-all font-mono">
+                    {connectionError
+                      .split("Confirm SSH host fingerprint:")[1]
+                      ?.trim()}
+                  </p>
+                  <p>
+                    Verify this fingerprint with the target device’s
+                    administrator before trusting it. Your password has not been
+                    sent yet.
+                  </p>
+                  <button
+                    type="button"
+                    className={button}
+                    onClick={() => {
+                      setHostKey(
+                        connectionError
+                          .split("Confirm SSH host fingerprint:")[1]
+                          ?.trim() ?? "",
+                      );
+                      setConnectionError(null);
+                    }}
+                  >
+                    Trust this fingerprint
+                  </button>
+                </>
+              ) : (
+                connectionError
+              )}
+            </div>
+          )}
+          {!passwordSsh && (
+            <ConnectionGuide
+              kind={(kind === "ssh-vm" ? "ssh" : kind) as ConnectionKind}
+              context="New connection"
+              error={connectionError}
+            />
+          )}
           <button
             disabled={busy}
             className="rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50"

@@ -16,6 +16,13 @@ pub enum Connection {
         user: String,
         port: u16,
     },
+    SshPassword {
+        host: String,
+        user: String,
+        port: u16,
+        credential: String,
+        host_key: String,
+    },
     Docker {
         container: String,
         #[serde(default)]
@@ -227,6 +234,15 @@ pub fn run(connection: &Connection, mut request: Value) -> Result<Value, HkError
             return Err(HkError::Validation(
                 "Local transport uses native filesystem operations".into(),
             ));
+        }
+        Connection::SshPassword {
+            host,
+            user,
+            port,
+            credential,
+            host_key,
+        } => {
+            return super::ssh_credentials::run(host, user, *port, credential, host_key, request);
         }
         Connection::Ssh { host, user, port } => {
             let mut cmd = crate::command("ssh");

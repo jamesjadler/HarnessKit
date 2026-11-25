@@ -32,6 +32,9 @@ semver = "1"
 fs2 = "0.4"
 zip = { workspace = true }
 sha2 = { workspace = true }
+ssh2 = "0.9"
+base64 = "0.22"
+keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust", "vendored"] }
 
 [dev-dependencies]
 serial_test = "3"

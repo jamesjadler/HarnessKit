@@ -125,6 +125,20 @@ pub enum Request {
         expected: String,
         content: String,
     },
+    Rename {
+        environment: String,
+        name: String,
+    },
+    ConnectPassword {
+        machine: String,
+        name: String,
+        host: String,
+        user: String,
+        port: u16,
+        password: String,
+        #[serde(default)]
+        host_key: String,
+    },
     Connect {
         machine: String,
         name: String,
@@ -633,6 +647,46 @@ pub fn execute(
                 }
             }
         }
+        Request::Rename { environment, name } => {
+            rename_environment(&coordinator, &environment, &name)?;
+        }
+        Request::ConnectPassword {
+            machine,
+            name,
+            host,
+            user,
+            port,
+            password,
+            host_key,
+        } => {
+            if machine.trim().is_empty() || name.trim().is_empty() {
+                return Err(HkError::Validation(
+                    "Machine and environment names required".into(),
+                ));
+            }
+            if coordinator.overview()?.registry.environments.iter().any(|e| matches!(&e.connection, Connection::SshPassword {host:h,user:u,port:p,..} if h==&host && u==&user && *p==port)) {
+                return Err(HkError::Conflict("Connection already registered".into()));
+            }
+            let connection = super::ssh_credentials::connect(host, user, port, password, host_key)?;
+            let credential = match &connection {
+                Connection::SshPassword { credential, .. } => credential.clone(),
+                _ => unreachable!(),
+            };
+            let result = execute(
+                home,
+                adapters,
+                store,
+                Request::Connect {
+                    machine,
+                    name,
+                    connection,
+                },
+            );
+            if result.is_err() {
+                super::ssh_credentials::forget(&credential);
+            }
+            return result;
+        }
         Request::Connect {
             machine,
             name,
@@ -988,5 +1042,69 @@ mod provider_tests {
         let view = execute(home, &adapters, &store, Request::Overview).unwrap();
         // Relocating an enrolled root requires an explicit resume after review.
         assert!(view.registry.environments[0].providers[0].paused);
+    }
+}
+
+fn rename_environment(
+    coordinator: &Coordinator,
+    environment: &str,
+    name: &str,
+) -> Result<(), HkError> {
+    let name = name.trim();
+    if name.is_empty() || name.len() > 120 || name.chars().any(char::is_control) {
+        return Err(HkError::Validation(
+            "Use an environment name of 1–120 characters".into(),
+        ));
+    }
+    coordinator.transaction(|r| {
+        let env = r
+            .environments
+            .iter_mut()
+            .find(|e| e.id == environment)
+            .ok_or_else(|| HkError::NotFound("Environment".into()))?;
+        env.name = name.into();
+        for file in &mut r.managed_files {
+            for copy in &mut file.copies {
+                if copy.environment_id == environment {
+                    copy.environment = name.into();
+                }
+            }
+        }
+        Ok(())
+    })
+}
+#[cfg(test)]
+mod connection_edit_tests {
+    use super::*;
+    #[test]
+    fn rename_preserves_environment_identity_and_connection() {
+        let tmp = tempfile::tempdir().unwrap();
+        let c = Coordinator::new(tmp.path().to_owned());
+        c.transaction(|r| {
+            r.environments.push(Environment {
+                id: "remote-id".into(),
+                machine: "MacBook".into(),
+                name: "old".into(),
+                os: "macos".into(),
+                paused: true,
+                providers: vec![],
+                connection: Connection::Ssh {
+                    host: "mac".into(),
+                    user: "demonlord".into(),
+                    port: 22,
+                },
+            });
+            Ok(())
+        })
+        .unwrap();
+        rename_environment(&c, "remote-id", "  MacBook Air  ").unwrap();
+        let env = c.overview().unwrap().registry.environments.remove(0);
+        assert_eq!(env.id, "remote-id");
+        assert_eq!(env.name, "MacBook Air");
+        assert_eq!(env.machine, "MacBook");
+        assert!(env.paused);
+        assert!(matches!(env.connection, Connection::Ssh { .. }));
+        assert!(rename_environment(&c, "remote-id", " ").is_err());
+        assert!(rename_environment(&c, "missing", "Name").is_err());
     }
 }

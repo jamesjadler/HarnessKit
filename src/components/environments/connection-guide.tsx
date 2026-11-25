@@ -14,7 +14,7 @@ export function environmentKind(env: ManagedEnvironment): ConnectionKind {
   if (env.connection?.type === "docker") return "docker";
   if (env.id === "windows-host") return "windows";
   if (env.connection?.type === "wsl") return "wsl";
-  if (env.connection?.type === "ssh")
+  if (env.connection?.type === "ssh" || env.connection?.type === "ssh_password")
     return /\.ts\.net\.?$/.test(env.connection.host ?? "")
       ? "tailscale"
       : "ssh";
