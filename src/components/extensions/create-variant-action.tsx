@@ -7,7 +7,13 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import { useExtensionStore } from "@/stores/extension-store";
 import { useManagedFileStore } from "@/stores/managed-file-store";
 const normalize = (path: string) => path.replace(/\\/g, "/").replace(/\/$/, "");
-export function CreateVariantAction({ group }: { group: GroupedExtension }) {
+export function CreateVariantAction({
+  group,
+  label = "Create variant",
+}: {
+  group: GroupedExtension;
+  label?: string;
+}) {
   const [open, setOpen] = useState(false),
     [notice, setNotice] = useState("");
   const data = useEnvironmentStore((s) => s.data),
@@ -63,7 +69,7 @@ export function CreateVariantAction({ group }: { group: GroupedExtension }) {
         }
         onClick={() => setOpen(true)}
       >
-        <Plus size={13} /> Create variant
+        <Plus size={13} /> {label}
       </button>
       {notice && (
         <span role="status" className="text-xs text-muted-foreground">

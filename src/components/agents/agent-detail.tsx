@@ -15,6 +15,7 @@ import { useAgentConfigStore } from "@/stores/agent-config-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useExtensionStore } from "@/stores/extension-store";
 import { useManagedFileStore } from "@/stores/managed-file-store";
+import { isSkillFile } from "@/lib/managed-skill-files";
 import { withManagedAgents } from "@/lib/managed-files";
 import { ManagedFileList } from "./managed-file-list";
 import { ConfigSection } from "./config-section";
@@ -83,6 +84,7 @@ export function AgentDetail() {
   const managed = managedFiles.filter(
     (f) =>
       f.agent === agent.name &&
+      !isSkillFile(f) &&
       (scope.type === "all" ||
         (scope.type === "global"
           ? f.scope === "global"

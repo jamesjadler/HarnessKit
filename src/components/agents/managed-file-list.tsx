@@ -9,7 +9,7 @@ import {
   Terminal,
   TriangleAlert,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { DiffIcon } from "@/components/shared/diff-icon";
 import {
   TextComparison,
@@ -66,7 +66,13 @@ function CopyIcon({
     </span>
   );
 }
-function ManagedFileRow({ file }: { file: ManagedFile }) {
+export function ManagedFileRow({
+  file,
+  variantExtras,
+}: {
+  file: ManagedFile;
+  variantExtras?: ReactNode;
+}) {
   const rev = latestRevision(file),
     status = managedStatus(file),
     command = useManagedFileStore((s) => s.command),
@@ -350,6 +356,7 @@ function ManagedFileRow({ file }: { file: ManagedFile }) {
               </button>
             </summary>
             <VariantFamily file={file} />
+            {variantExtras}
           </details>
           {file.copies
             .filter((c) => c.pending && c.content !== null)

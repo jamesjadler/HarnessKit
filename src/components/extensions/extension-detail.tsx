@@ -1,3 +1,6 @@
+import { ManagedSkillFiles } from "./managed-skill-files";
+import { selectSkillFiles } from "@/lib/managed-skill-files";
+import { useManagedFileStore } from "@/stores/managed-file-store";
 import { clsx } from "clsx";
 import {
   AlertTriangle,
@@ -78,6 +81,16 @@ export function ExtensionDetail() {
   const { t: tm } = useTranslation("marketplace");
   // Copy-path strings are shared with the Agents page rows.
   const { t: ta } = useTranslation("agents");
+  const managedFiles = useManagedFileStore((s) => s.files);
+  const refreshManaged = useManagedFileStore((s) => s.refresh);
+  const managedError = useManagedFileStore((s) => s.error);
+  useEffect(() => {
+    void refreshManaged();
+    const timer = setInterval(() => {
+      if (!document.hidden) void refreshManaged();
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [refreshManaged]);
   const grouped = useExtensionStore((s) => s.grouped);
   const selectedId = useExtensionStore((s) => s.selectedId);
   const setSelectedId = useExtensionStore((s) => s.setSelectedId);
@@ -335,6 +348,18 @@ export function ExtensionDetail() {
         })()
       : null;
 
+  const skillRoots =
+    group.kind === "skill"
+      ? group.instances.flatMap((instance) => {
+          const path =
+            instance.source_path || instanceData.get(instance.id)?.path;
+          return path ? instance.agents.map((agent) => ({ agent, path })) : [];
+        })
+      : [];
+  const managedSkillFiles = selectSkillFiles(managedFiles, skillRoots);
+  const hasManagedSkill =
+    group.kind === "skill" && managedSkillFiles.length > 0;
+
   return (
     <div
       onWheel={(e) => e.stopPropagation()}
@@ -347,9 +372,11 @@ export function ExtensionDetail() {
         updateExtension={updateExtension}
         onClose={() => setSelectedId(null)}
       />
-      <div className="px-4">
-        <CreateVariantAction group={group} />
-      </div>
+      {!hasManagedSkill && (
+        <div className="px-4">
+          <CreateVariantAction group={group} />
+        </div>
+      )}
 
       {/* Scrollable body — keyed by group so switching extensions remounts
           the container and the scroll position starts at the top. */}
@@ -835,12 +862,14 @@ export function ExtensionDetail() {
         <CliSections group={group} extensions={extensions} />
 
         {/* 8. Paths (per-agent breakdown) — skip for CLI */}
-        <DetailPaths
-          group={group}
-          instanceData={instanceData}
-          skillLocations={skillLocations}
-          agentOrder={agentOrder}
-        />
+        {!hasManagedSkill && (
+          <DetailPaths
+            group={group}
+            instanceData={instanceData}
+            skillLocations={skillLocations}
+            agentOrder={agentOrder}
+          />
+        )}
 
         {/* 8a. MCP configuration summary — the backend masks real secret
          * values as **** but renders snapshot placeholders as <redacted>,
@@ -858,8 +887,25 @@ export function ExtensionDetail() {
           </div>
         )}
 
+        {hasManagedSkill && (
+          <div className="mt-4">
+            <h4 className="managed-section-title">Files</h4>
+            {managedError && (
+              <p role="alert" className="text-xs text-warning">
+                File inventory: {managedError}
+              </p>
+            )}
+            <ManagedSkillFiles
+              files={managedSkillFiles}
+              roots={skillRoots}
+              group={group}
+            />
+          </div>
+        )}
+
         {/* 9. Content / Documentation — skip for hooks and CLIs */}
-        {group.kind !== "hook" &&
+        {!hasManagedSkill &&
+          group.kind !== "hook" &&
           group.kind !== "cli" &&
           group.kind !== "mcp" && (
             <div className="mt-4">
