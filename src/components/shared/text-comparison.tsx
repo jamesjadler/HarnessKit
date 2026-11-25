@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { changedSpan, lineCount, mergeBlocks } from "@/lib/merge-blocks";
+import { DiffIcon } from "./diff-icon";
 import "./text-comparison.css";
 export interface ComparisonSide {
   id: string;
@@ -26,12 +27,14 @@ interface Props {
   right: ComparisonSide;
   third?: ComparisonSide;
   onSave: (side: ComparisonSide, content: string) => Promise<ComparisonSide>;
+  onApplyResult?: (content: string) => Promise<void>;
   onStopSync?: () => Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
   onBusyChange?: (busy: boolean) => void;
 }
 interface Draft {
   texts: string[];
+  rightTexts: string[];
   resolved: boolean[];
   ignored: string[][];
 }
@@ -39,6 +42,7 @@ const revisionLabel = (r: string) =>
   /^[a-f0-9]{64}$/.test(r) ? `snapshot ${r.slice(0, 8)}` : r;
 const copy = (d: Draft): Draft => ({
   texts: [...d.texts],
+  rightTexts: [...d.rightTexts],
   resolved: [...d.resolved],
   ignored: d.ignored.map((x) => [...x]),
 });
@@ -49,6 +53,7 @@ export function TextComparison({
   right,
   third,
   onSave,
+  onApplyResult,
   onStopSync,
   onDirtyChange,
   onBusyChange,
@@ -61,6 +66,7 @@ export function TextComparison({
     };
   }, []);
   const [sources] = useState(() => [left, right, ...(third ? [third] : [])]);
+  const twoPane = sources.length === 2;
   const [saved, setSaved] = useState(sources);
   const blocks = useMemo(
     () => mergeBlocks(sources.map((s) => s.content)),
@@ -69,6 +75,7 @@ export function TextComparison({
   const initial = useMemo<Draft>(
     () => ({
       texts: blocks.map((b) => b.texts[0]),
+      rightTexts: blocks.map((b) => b.texts[1]),
       resolved: blocks.map((b) => !b.changed),
       ignored: blocks.map(() => []),
     }),
@@ -149,23 +156,51 @@ export function TextComparison({
     });
     fields.current[next]?.focus({ preventScroll: true });
   };
-  const apply = async () => {
+  const apply = async (mode: "all" | "edits" | "right" = "all") => {
+    const resultContent =
+      mode === "right" ? draft.rightTexts.join("") : content;
     setBusy(true);
     onBusyChange?.(true);
     setError("");
     setMessage("");
     let count = 0;
     try {
-      for (const side of writable) {
-        if (!mounted.current) return;
-        if (side.content === content) continue;
-        const result = await onSave(side, content);
-        setSaved((old) => old.map((s) => (s.id === side.id ? result : s)));
-        count++;
+      if (onApplyResult) {
+        await onApplyResult(resultContent);
+      } else
+        for (const side of writable) {
+          const targetContent =
+            mode === "edits" && side.id === sources[1].id
+              ? draft.rightTexts.join("")
+              : resultContent;
+          if (!mounted.current) return;
+          if (side.content === targetContent) continue;
+          const result = await onSave(side, targetContent);
+          setSaved((old) => old.map((s) => (s.id === side.id ? result : s)));
+          count++;
+        }
+      if (mode !== "edits" && twoPane) {
+        setDraft((d) => ({
+          ...d,
+          texts: sources[0].readOnly
+            ? d.texts
+            : mode === "right"
+              ? [...d.rightTexts]
+              : d.texts,
+          rightTexts: sources[1].readOnly
+            ? d.rightTexts
+            : mode === "right"
+              ? d.rightTexts
+              : [...d.texts],
+        }));
       }
       setDirty(false);
       setMessage(
-        `Result applied to ${writable.length} writable ${writable.length === 1 ? "file" : "files"}.`,
+        onApplyResult
+          ? "Result saved and synchronized."
+          : mode === "edits"
+            ? "Edits saved to their respective files."
+            : `Result applied to ${writable.length} writable ${writable.length === 1 ? "file" : "files"}.`,
       );
     } catch (e) {
       setDirty(true);
@@ -178,6 +213,10 @@ export function TextComparison({
     }
   };
   const syncScroll = (element: HTMLElement) => {
+    const overlay = element.parentElement?.querySelector<HTMLElement>(
+      ".merge-edit-highlight",
+    );
+    if (overlay) overlay.scrollLeft = element.scrollLeft;
     if (!linked) return;
     for (const pane of scrollers.current)
       if (
@@ -187,6 +226,20 @@ export function TextComparison({
       )
         pane.scrollLeft = element.scrollLeft;
   };
+  const editHighlight = (text: string, other: string, numbered = false) => {
+    if (!twoPane || !highlight) return null;
+    const [a, b] = changedSpan(text, other);
+    return (
+      <pre
+        aria-hidden="true"
+        className={`merge-edit-highlight ${numbered ? "merge-highlight-numbered" : ""}`}
+      >
+        {text.slice(0, a)}
+        <mark>{text.slice(a, b)}</mark>
+        {text.slice(b)}
+      </pre>
+    );
+  };
   const sourceHeader = (slot: 0 | 1) => {
     const side = sources[selected[slot]];
     return (
@@ -194,7 +247,7 @@ export function TextComparison({
         <select
           aria-label={slot ? "Right source" : "Left source"}
           value={selected[slot]}
-          disabled={busy}
+          disabled={busy || twoPane}
           onChange={(e) =>
             setSelected((old) =>
               slot
@@ -215,7 +268,11 @@ export function TextComparison({
         </select>
         <span>
           {side.revisionName ?? revisionLabel(side.revision)}
-          {side.readOnly ? " · Historical / read-only" : " · Read-only source"}
+          {side.readOnly
+            ? " · Historical / read-only"
+            : twoPane
+              ? " · Editable"
+              : " · Read-only source"}
         </span>
         <code title={side.path}>{side.path}</code>
       </header>
@@ -275,11 +332,15 @@ export function TextComparison({
       <button
         title={`Accept ${s.environment} change`}
         aria-label={`Use ${s.environment} change ${i + 1}`}
-        disabled={busy}
+        disabled={busy || (twoPane && !!sources[1 - slot].readOnly)}
         onClick={() => {
           setCurrent(i);
           update((d) => {
-            d.texts[i] = blocks[i].texts[selected[slot]];
+            if (twoPane && slot === 0) d.rightTexts[i] = d.texts[i];
+            else
+              d.texts[i] = twoPane
+                ? d.rightTexts[i]
+                : blocks[i].texts[selected[slot]];
             d.resolved[i] = true;
             d.ignored[i] = [];
           });
@@ -357,8 +418,12 @@ export function TextComparison({
     );
   }
   return (
-    <section aria-label="Text comparison" className="merge-editor">
+    <section
+      aria-label="Text comparison"
+      className={`merge-editor ${twoPane ? "merge-two-pane" : ""}`}
+    >
       <div className="merge-title">
+        <DiffIcon size={17} />
         <b>Merge {left.path.split(/[\\/]/).pop()}</b>
         <span>
           {pending ? `${pending} unresolved changes` : "All changes resolved"}
@@ -428,15 +493,17 @@ export function TextComparison({
         <div className="merge-wide">
           <div className="merge-heads">
             {sourceHeader(0)}
-            <header className="merge-result-head">
-              <b>Result · editable</b>
-              <span>{dirty ? "Unsaved changes" : "Draft"}</span>
-              <span>
-                Apply to:{" "}
-                {writable.map((s) => s.environment).join(", ") ||
-                  "No writable targets"}
-              </span>
-            </header>
+            {!twoPane && (
+              <header className="merge-result-head">
+                <b>Result · editable</b>
+                <span>{dirty ? "Unsaved changes" : "Draft"}</span>
+                <span>
+                  Apply to:{" "}
+                  {writable.map((s) => s.environment).join(", ") ||
+                    "No writable targets"}
+                </span>
+              </header>
+            )}
             {sourceHeader(1)}
           </div>
           {blocks.map((block, i) => {
@@ -451,6 +518,7 @@ export function TextComparison({
                   ),
                 ),
                 text.split("\n").length,
+                ...(twoPane ? [draft.rightTexts[i].split("\n").length] : []),
               ) * 22;
             const start =
               1 + draft.texts.slice(0, i).reduce((n, t) => n + lineCount(t), 0);
@@ -462,8 +530,8 @@ export function TextComparison({
                 }}
                 className={`merge-row ${current === i ? "merge-current" : ""}`}
               >
-                {sourceBlock(selected[0], i, height)}
-                {controls(0, i)}
+                {!twoPane && sourceBlock(selected[0], i, height)}
+                {!twoPane && controls(0, i)}
                 <div
                   className={`merge-result-code ${block.changed ? (draft.resolved[i] ? "merge-resolved" : "merge-changed") : ""}`}
                 >
@@ -476,6 +544,7 @@ export function TextComparison({
                       </div>
                     ))}
                   </div>
+                  {editHighlight(text, draft.rightTexts[i], true)}
                   <textarea
                     ref={(el) => {
                       fields.current[i] = el;
@@ -484,6 +553,7 @@ export function TextComparison({
                     aria-label={`Result block ${i + 1}`}
                     value={text}
                     disabled={busy}
+                    readOnly={twoPane && !!sources[0].readOnly}
                     spellCheck={false}
                     wrap="off"
                     style={{ height }}
@@ -513,8 +583,65 @@ export function TextComparison({
                     }}
                   />
                 </div>
-                {controls(1, i)}
-                {sourceBlock(selected[1], i, height)}
+                {twoPane ? (
+                  <>
+                    <div className="merge-pair-controls">
+                      {controls(0, i)}
+                      {controls(1, i)}
+                    </div>
+                    <div
+                      className={`merge-result-code ${block.changed ? "merge-changed" : ""}`}
+                    >
+                      {editHighlight(draft.rightTexts[i], text)}
+                      <textarea
+                        aria-label={`${sources[1].environment} block ${i + 1}`}
+                        value={draft.rightTexts[i]}
+                        disabled={busy}
+                        readOnly={!!sources[1].readOnly}
+                        spellCheck={false}
+                        wrap="off"
+                        style={{
+                          height: Math.max(
+                            height,
+                            draft.rightTexts[i].split("\n").length * 22,
+                          ),
+                        }}
+                        ref={(el) => {
+                          scrollers.current[i * 3 + 2] = el;
+                        }}
+                        onFocus={() => setCurrent(i)}
+                        onScroll={(e) => syncScroll(e.currentTarget)}
+                        onChange={(e) =>
+                          update((d) => {
+                            const previous =
+                              d.rightTexts[i] || sources[1].content;
+                            d.rightTexts[i] =
+                              previous.includes("\r\n") &&
+                              !/(^|[^\r])\n/.test(previous)
+                                ? e.target.value.replace(/\r?\n/g, "\r\n")
+                                : e.target.value;
+                            d.resolved[i] = !block.changed;
+                            d.ignored[i] = [];
+                          })
+                        }
+                        onKeyDown={(e) => {
+                          if (
+                            (e.ctrlKey || e.metaKey) &&
+                            e.key.toLowerCase() === "z"
+                          ) {
+                            e.preventDefault();
+                            history(e.shiftKey);
+                          }
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {controls(1, i)}
+                    {sourceBlock(selected[1], i, height)}
+                  </>
+                )}
               </div>
             );
           })}
@@ -527,7 +654,11 @@ export function TextComparison({
             disabled={busy}
             onClick={() =>
               update((d) => {
-                d.texts = blocks.map((b) => b.texts[index]);
+                const chosen = twoPane
+                  ? [...(index === 0 ? d.texts : d.rightTexts)]
+                  : blocks.map((b) => b.texts[index]);
+                if (!twoPane || !sources[0].readOnly) d.texts = chosen;
+                if (twoPane && !sources[1].readOnly) d.rightTexts = [...chosen];
                 d.resolved = blocks.map(() => true);
                 d.ignored = blocks.map(() => []);
               })
@@ -558,18 +689,45 @@ export function TextComparison({
             Stop syncing this skill
           </button>
         )}
+        {twoPane && !onApplyResult && (
+          <button
+            disabled={busy || !dirty || !writable.length}
+            onClick={() => apply("edits")}
+          >
+            Save edits
+          </button>
+        )}
+        {twoPane && onApplyResult && (
+          <button
+            disabled={busy || !writable.length}
+            onClick={() => apply("right")}
+          >
+            Save &amp; sync {sources[1].environment} result
+          </button>
+        )}
         <button
           className="merge-apply"
-          disabled={busy || pending > 0 || !writable.length}
-          onClick={apply}
+          disabled={busy || (!onApplyResult && pending > 0) || !writable.length}
+          onClick={() => apply()}
         >
-          {busy ? "Applying…" : "Save & apply result"}
+          {busy
+            ? "Applying…"
+            : onApplyResult
+              ? `Save & sync ${twoPane ? sources[0].environment : "merged"} result`
+              : twoPane
+                ? "Save & apply left result"
+                : "Save & apply result"}
         </button>
         <p>
-          Arrows accept a source change; × ignores that side without deleting
-          text. Keep selects a whole version. Save explicitly writes the result
-          to the writable files above, checking each revision. Historical
-          sources remain unchanged.
+          {twoPane
+            ? "Type directly in either writable file. Arrows copy the current block to the other file; × ignores a change without deleting text. "
+            : "Arrows accept a source change; × ignores that side without deleting text. "}
+          {onApplyResult
+            ? "Save & sync saves the selected result and synchronizes the managed copies."
+            : twoPane
+              ? "Save edits saves each file separately. Save & apply left result replaces writable copies with the left contents."
+              : "Save & apply writes the result to all writable files."}{" "}
+          Each save checks revisions. Historical sources remain unchanged.
         </p>
       </div>
     </section>

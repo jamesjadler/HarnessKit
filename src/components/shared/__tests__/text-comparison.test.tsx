@@ -30,7 +30,7 @@ describe("shared merge", () => {
       screen.getByRole("button", { name: "Mark block resolved" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Save & apply result" }),
+      screen.getByRole("button", { name: "Save & apply left result" }),
     );
     await screen.findByRole("alert");
     expect(screen.getByLabelText("Result block 1")).toHaveValue(
@@ -49,7 +49,7 @@ describe("shared merge", () => {
     expect(screen.getByLabelText("Result block 1")).toHaveValue("new\n");
     expect(save).not.toHaveBeenCalled();
     fireEvent.click(
-      screen.getByRole("button", { name: "Save & apply result" }),
+      screen.getByRole("button", { name: "Save & apply left result" }),
     );
     await waitFor(() => expect(save).toHaveBeenCalledWith(left, "new\n"));
   });
@@ -67,14 +67,14 @@ describe("shared merge", () => {
     );
     fireEvent.click(ignore);
     expect(
-      screen.getByRole("button", { name: "Save & apply result" }),
+      screen.getByRole("button", { name: "Save & apply left result" }),
     ).toBeDisabled();
     fireEvent.click(
       screen.getByRole("button", { name: "Ignore Ubuntu change 1" }),
     );
     expect(screen.getByLabelText("Result block 1")).toHaveValue("old\n");
     expect(
-      screen.getByRole("button", { name: "Save & apply result" }),
+      screen.getByRole("button", { name: "Save & apply left result" }),
     ).toBeEnabled();
   });
   it("preserves edits when switching among three sources and supports undo", () => {
@@ -109,7 +109,7 @@ describe("shared merge", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Keep Windows · r8" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Save & apply result" }),
+      screen.getByRole("button", { name: "Save & apply left result" }),
     );
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(save).toHaveBeenCalledWith(right, "old\n");
@@ -136,11 +136,11 @@ describe("shared merge", () => {
       screen.getByRole("button", { name: "Mark block resolved" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Save & apply result" }),
+      screen.getByRole("button", { name: "Save & apply left result" }),
     );
     await screen.findByRole("alert");
     fireEvent.click(
-      screen.getByRole("button", { name: "Save & apply result" }),
+      screen.getByRole("button", { name: "Save & apply left result" }),
     );
     await waitFor(() => expect(save).toHaveBeenCalledTimes(3));
     expect(save.mock.calls[2][0].id).toBe("b");
@@ -160,7 +160,9 @@ it("preserves CRLF when editing a Windows result block", async () => {
     target: { value: "edited\nsecond\n" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Mark block resolved" }));
-  fireEvent.click(screen.getByRole("button", { name: "Save & apply result" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save & apply left result" }),
+  );
   await waitFor(() =>
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({ id: "a" }),
@@ -190,10 +192,133 @@ it("stops further writes if the editor is unmounted during a save", async () => 
     target: { value: "merged" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Mark block resolved" }));
-  fireEvent.click(screen.getByRole("button", { name: "Save & apply result" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save & apply left result" }),
+  );
   expect(busy).toHaveBeenCalledWith(true);
   view.unmount();
   finish({ ...left, content: "merged" });
   await waitFor(() => expect(busy).toHaveBeenLastCalledWith(false));
   expect(save).toHaveBeenCalledTimes(1);
+});
+
+it("shows exactly two editable panes and saves their independent contents", async () => {
+  const save = vi.fn(async (s, c) => ({ ...s, content: c, revision: "saved" }));
+  const { container } = render(
+    <TextComparison left={left} right={right} onSave={save} />,
+  );
+  expect(container.querySelectorAll(".merge-heads header")).toHaveLength(2);
+  fireEvent.change(screen.getByLabelText("Result block 1"), {
+    target: { value: "left edit\n" },
+  });
+  fireEvent.change(screen.getByLabelText("Ubuntu block 1"), {
+    target: { value: "right edit\n" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save edits" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(save).toHaveBeenNthCalledWith(1, left, "left edit\n");
+  expect(save).toHaveBeenNthCalledWith(2, right, "right edit\n");
+});
+
+it("copies the currently edited source and can undo both pane drafts", () => {
+  render(<TextComparison left={left} right={right} onSave={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText("Ubuntu block 1"), {
+    target: { value: "right edit\n" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Use Ubuntu change 1" }));
+  expect(screen.getByLabelText("Result block 1")).toHaveValue("right edit\n");
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  expect(screen.getByLabelText("Result block 1")).toHaveValue("old\n");
+  expect(screen.getByLabelText("Ubuntu block 1")).toHaveValue("right edit\n");
+});
+
+it("syncs the chosen edited pane once through the managed result callback", async () => {
+  const save = vi.fn();
+  const apply = vi.fn().mockRejectedValueOnce(new Error("Copy offline"));
+  const dirty = vi.fn();
+  render(
+    <TextComparison
+      left={left}
+      right={right}
+      onSave={save}
+      onApplyResult={apply}
+      onDirtyChange={dirty}
+    />,
+  );
+  expect(
+    screen.queryByRole("button", { name: "Save edits" }),
+  ).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Ubuntu block 1"), {
+    target: { value: "chosen\n" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save & sync Ubuntu result" }),
+  );
+  await screen.findByRole("alert");
+  expect(apply).toHaveBeenCalledExactlyOnceWith("chosen\n");
+  expect(save).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("Ubuntu block 1")).toHaveValue("chosen\n");
+  expect(dirty).toHaveBeenLastCalledWith(true);
+  apply.mockResolvedValueOnce(undefined);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save & sync Ubuntu result" }),
+  );
+  await waitFor(() => expect(dirty).toHaveBeenLastCalledWith(false));
+  expect(screen.getByLabelText("Result block 1")).toHaveValue("chosen\n");
+  expect(save).not.toHaveBeenCalled();
+});
+
+it("retries only the failed independent draft and preserves right CRLF", async () => {
+  const save = vi
+    .fn()
+    .mockImplementationOnce(async (s, c) => ({
+      ...s,
+      content: c,
+      revision: "next",
+    }))
+    .mockRejectedValueOnce(new Error("Offline"))
+    .mockImplementation(async (s, c) => ({
+      ...s,
+      content: c,
+      revision: "next",
+    }));
+  render(
+    <TextComparison
+      left={left}
+      right={{ ...right, content: "new\r\n" }}
+      onSave={save}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Result block 1"), {
+    target: { value: "left edit\n" },
+  });
+  fireEvent.change(screen.getByLabelText("Ubuntu block 1"), {
+    target: { value: "right edit\n" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save edits" }));
+  await screen.findByRole("alert");
+  fireEvent.click(screen.getByRole("button", { name: "Save edits" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(3));
+  expect(save.mock.calls[2]).toEqual([
+    expect.objectContaining({ id: "b", revision: "r7" }),
+    "right edit\r\n",
+  ]);
+  expect(screen.getByLabelText("Result block 1")).toHaveValue("left edit\n");
+});
+
+it("keeps historical panes read-only and disables arrows targeting them", () => {
+  render(
+    <TextComparison
+      left={{ ...left, readOnly: true }}
+      right={right}
+      onSave={vi.fn()}
+    />,
+  );
+  expect(screen.getByLabelText("Result block 1")).toHaveAttribute("readonly");
+  expect(screen.getByLabelText("Ubuntu block 1")).not.toHaveAttribute(
+    "readonly",
+  );
+  expect(
+    screen.getByRole("button", { name: "Use Ubuntu change 1" }),
+  ).toBeDisabled();
 });
