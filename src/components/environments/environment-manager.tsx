@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { transport } from "@/lib/transport";
+import { parseError } from "@/lib/error-types";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useProjectStore } from "@/stores/project-store";
 import {
@@ -511,7 +512,9 @@ export function EnvironmentManager({
               setHostKey("");
               setAdding(false);
             } catch (e) {
-              setConnectionError(e instanceof Error ? e.message : String(e));
+              setConnectionError(
+                parseError(e instanceof Error ? e.message : e).message,
+              );
             }
           }}
         >

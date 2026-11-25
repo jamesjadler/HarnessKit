@@ -218,7 +218,10 @@ it("opening and canceling the picker does not flush an unsaved draft", async () 
 
 it("defaults to credentials, confirms fingerprint, and clears password after connection", async () => {
   command.mockRejectedValueOnce(
-    new Error("Confirm SSH host fingerprint: SHA256:sample"),
+    JSON.stringify({
+      kind: "Network",
+      message: "Confirm SSH host fingerprint: SHA256:sample",
+    }),
   );
   render(<EnvironmentManager />);
   fireEvent.click(screen.getByRole("button", { name: "Add environment" }));
